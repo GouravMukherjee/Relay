@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Relay Desk</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600&amp;family=Geist+Mono:wght@400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "inverse-surface": "#303033",
+                        "error-container": "#ffdad6",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-variant": "#e4e1e6",
+                        "on-secondary-container": "#00714d",
+                        "tertiary-fixed": "#ffdbcc",
+                        "tertiary-container": "#a44100",
+                        "primary-fixed-dim": "#c3c0ff",
+                        "on-tertiary-fixed-variant": "#7b2f00",
+                        "surface-container-low": "#f6f2f7",
+                        "on-secondary-fixed-variant": "#005236",
+                        "on-background": "#1b1b1e",
+                        "secondary": "#006c49",
+                        "primary-fixed": "#e2dfff",
+                        "secondary-fixed-dim": "#4edea3",
+                        "secondary-container": "#6cf8bb",
+                        "on-tertiary": "#ffffff",
+                        "surface-container-high": "#eae7eb",
+                        "secondary-fixed": "#6ffbbe",
+                        "primary": "#3525cd",
+                        "on-tertiary-container": "#ffd2be",
+                        "on-secondary-fixed": "#002113",
+                        "primary-container": "#4f46e5",
+                        "on-tertiary-fixed": "#351000",
+                        "on-surface-variant": "#464555",
+                        "on-primary": "#ffffff",
+                        "on-primary-fixed-variant": "#3323cc",
+                        "inverse-on-surface": "#f3f0f4",
+                        "background": "#fbf8fc",
+                        "on-error": "#ffffff",
+                        "outline-variant": "#c7c4d8",
+                        "on-primary-container": "#dad7ff",
+                        "on-secondary": "#ffffff",
+                        "on-error-container": "#93000a",
+                        "error": "#ba1a1a",
+                        "surface-bright": "#fbf8fc",
+                        "tertiary-fixed-dim": "#ffb695",
+                        "tertiary": "#7e3000",
+                        "surface-container": "#f0edf1",
+                        "on-primary-fixed": "#0f0069",
+                        "surface-container-highest": "#e4e1e6",
+                        "on-surface": "#1b1b1e",
+                        "inverse-primary": "#c3c0ff",
+                        "surface": "#fbf8fc",
+                        "outline": "#777587",
+                        "surface-tint": "#4d44e3",
+                        "surface-dim": "#dcd9dd"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "xs": "4px",
+                        "md": "16px",
+                        "gutter": "20px",
+                        "xl": "40px",
+                        "lg": "24px",
+                        "base": "4px",
+                        "sm": "8px",
+                        "container-max": "1440px"
+                    },
+                    "fontFamily": {
+                        "h1": ["Geist"],
+                        "h3": ["Geist"],
+                        "body-md": ["Geist"],
+                        "label-caps": ["Geist"],
+                        "mono-sm": ["Geist Mono"],
+                        "h2": ["Geist"],
+                        "body-lg": ["Geist"]
+                    },
+                    "fontSize": {
+                        "h1": ["30px", { "lineHeight": "36px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "h3": ["18px", { "lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "label-caps": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600" }],
+                        "mono-sm": ["13px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "h2": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.fill {
+            font-variation-settings: 'FILL' 1;
+        }
+        /* Custom scrollbar for a cleaner look */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #c7c4d8;
+            border-radius: 9999px;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-md min-h-screen flex flex-col">
+<!-- TopNavBar Component -->
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-lg h-[64px] bg-surface dark:bg-surface-container border-b border-outline-variant shadow-[0_1px_2px_0_rgba(0,0,0,0.02)]">
+<div class="font-h2 text-h2 font-bold text-primary dark:text-inverse-primary tracking-tight">Relay</div>
+<nav class="flex items-center h-full">
+<a class="flex items-center h-full px-md font-body-md text-body-md text-on-surface-variant dark:text-outline hover:text-primary dark:hover:text-inverse-primary transition-colors" href="#">Live</a>
+<a class="flex items-center h-full px-md font-body-md text-body-md text-primary dark:text-inverse-primary border-b-2 border-primary dark:border-inverse-primary pb-1" href="#">Desk</a>
+<a class="flex items-center h-full px-md font-body-md text-body-md text-on-surface-variant dark:text-outline hover:text-primary dark:hover:text-inverse-primary transition-colors" href="#">Intake</a>
+</nav>
+<div class="flex items-center gap-md">
+<button class="text-on-surface-variant hover:text-primary transition-colors flex items-center justify-center w-8 h-8 rounded-full hover:bg-surface-container-high">
+<span class="material-symbols-outlined text-[20px]">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors flex items-center justify-center w-8 h-8 rounded-full hover:bg-surface-container-high">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-outline-variant cursor-pointer">
+<img alt="User profile" class="w-full h-full object-cover" data-alt="A professional headshot of a diverse team member used as a small circular avatar. The person has a friendly but focused expression, suitable for a corporate B2B SaaS dashboard. The lighting is even and bright, casting no harsh shadows, set against a completely neutral, solid white background to blend seamlessly into a light-mode UI." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAq02QFeOeeVnDeBgZPHoRyY94z5DaiLPrM89ojDe6IlKeFitkCRCWdjS7vzFjh58q-4gyQUgItwM1BYxRKiXODvtzfIZcUdCvNTWD-Y-fwNkRaviwugWte86eEZ1TswOdankstWR9BDr_FKiVoQhjTH7Eu9S4g_QMEOEhrU13Lp8Z_2vZ_KkU8KbF5ABKCMbaRIJoI9GwY5UTw6rkXY0IwkYiyvjYfs_cfQ9mjfFJrUV0gdfSRNRwQfqZSfox945-ptklRFqiCHnA"/>
+</div>
+</div>
+</header>
+<!-- Main Content Area -->
+<main class="flex-1 pt-[84px] pb-lg px-lg flex justify-center w-full h-screen overflow-hidden">
+<div class="max-w-container-max w-full h-full flex gap-lg">
+<!-- Left Panel (Conversation) - 38% -->
+<section class="w-[38%] flex flex-col bg-surface-container-lowest border border-outline-variant rounded-xl shadow-[0_1px_2px_0_rgba(0,0,0,0.05)] overflow-hidden h-full">
+<!-- Header -->
+<div class="px-md py-sm border-b border-outline-variant bg-surface-bright">
+<h2 class="font-label-caps text-label-caps text-outline uppercase tracking-wider">Conversation</h2>
+</div>
+<!-- Chat Thread -->
+<div class="flex-1 overflow-y-auto p-md flex flex-col gap-lg bg-surface-container-lowest">
+<!-- Customer Message -->
+<div class="flex gap-sm max-w-[90%]">
+<div class="w-8 h-8 rounded-full bg-primary-fixed-dim text-on-primary-fixed-variant flex items-center justify-center font-label-caps text-label-caps flex-shrink-0">
+                            SC
+                        </div>
+<div class="bg-surface-container-low border border-surface-variant p-md rounded-lg rounded-tl-none">
+<p class="font-body-md text-body-md text-on-surface">Hey, that CRM export sync issue is back again.</p>
+</div>
+</div>
+<!-- Agent Message -->
+<div class="flex gap-sm max-w-[90%] self-end">
+<div class="bg-surface-container-lowest border border-outline-variant border-l-[3px] border-l-primary-container p-md rounded-lg rounded-tr-none shadow-sm">
+<p class="font-body-md text-body-md text-on-surface">Looking into that now for you, Sarah. One moment.</p>
+</div>
+</div>
+<!-- Customer Message -->
+<div class="flex gap-sm max-w-[90%]">
+<div class="w-8 h-8 rounded-full bg-primary-fixed-dim text-on-primary-fixed-variant flex items-center justify-center font-label-caps text-label-caps flex-shrink-0">
+                            SC
+                        </div>
+<div class="bg-surface-container-low border border-surface-variant p-md rounded-lg rounded-tl-none">
+<p class="font-body-md text-body-md text-on-surface">Thanks, it's blocking the end-of-quarter report.</p>
+</div>
+</div>
+</div>
+<!-- Input Area -->
+<div class="p-md border-t border-outline-variant bg-surface-bright flex flex-col gap-sm">
+<div class="relative w-full">
+<textarea class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg p-sm pr-[80px] font-body-md text-body-md text-on-surface focus:outline-none focus:border-primary-container focus:ring-2 focus:ring-primary-container/10 resize-none h-[80px] placeholder-outline" placeholder="Type a message..."></textarea>
+<div class="absolute bottom-sm right-sm flex gap-xs">
+<button class="w-8 h-8 flex items-center justify-center text-outline hover:text-on-surface transition-colors rounded-DEFAULT hover:bg-surface-container-high">
+<span class="material-symbols-outlined text-[18px]">attach_file</span>
+</button>
+<button class="bg-primary-container text-on-primary w-8 h-8 rounded-DEFAULT flex items-center justify-center hover:bg-primary transition-colors">
+<span class="material-symbols-outlined text-[18px]">send</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Right Panel (Context) - 62% -->
+<section class="w-[62%] flex flex-col gap-lg h-full overflow-y-auto pr-sm">
+<!-- Customer Card -->
+<article class="bg-surface-container-lowest border border-outline-variant rounded-xl shadow-[0_1px_2px_0_rgba(0,0,0,0.05)] flex flex-col">
+<div class="px-md py-sm border-b border-outline-variant bg-surface-bright">
+<h2 class="font-label-caps text-label-caps text-outline uppercase tracking-wider">Customer</h2>
+</div>
+<div class="p-lg flex flex-col gap-lg">
+<!-- Identity -->
+<div class="flex items-center gap-md">
+<div class="w-[48px] h-[48px] rounded-full bg-primary-fixed-dim text-on-primary-fixed-variant flex items-center justify-center font-h3 text-h3 shadow-sm border border-outline-variant">
+                                SC
+                            </div>
+<div class="flex flex-col">
+<div class="flex items-center gap-sm">
+<h3 class="font-h3 text-h3 text-on-surface">Sarah Chen</h3>
+<span class="bg-surface-container-high border border-outline-variant text-on-surface-variant px-sm py-[2px] rounded-full font-label-caps text-label-caps flex items-center gap-xs">
+<span class="w-[6px] h-[6px] rounded-full bg-outline"></span>
+                                        Growth Plan
+                                    </span>
+</div>
+<span class="font-body-md text-body-md text-on-surface-variant">Acme Corp</span>
+</div>
+</div>
+<!-- Recent Tickets -->
+<div class="flex flex-col gap-sm">
+<h4 class="font-label-caps text-label-caps text-outline uppercase tracking-wider">Recent Tickets</h4>
+<ul class="flex flex-col gap-xs">
+<li class="flex items-start gap-sm group cursor-pointer p-xs -ml-xs rounded-lg hover:bg-surface-container-low transition-colors">
+<span class="material-symbols-outlined text-outline text-[16px] mt-[2px]">check_circle</span>
+<div class="flex flex-col">
+<span class="font-body-md text-body-md text-on-surface group-hover:text-primary transition-colors">CRM export sync</span>
+<span class="font-mono-sm text-mono-sm text-on-surface-variant">resolved Mar 12</span>
+</div>
+</li>
+<li class="flex items-start gap-sm group cursor-pointer p-xs -ml-xs rounded-lg hover:bg-surface-container-low transition-colors">
+<span class="material-symbols-outlined text-outline text-[16px] mt-[2px]">check_circle</span>
+<div class="flex flex-col">
+<span class="font-body-md text-body-md text-on-surface group-hover:text-primary transition-colors">Onboarding setup</span>
+<span class="font-mono-sm text-mono-sm text-on-surface-variant">resolved Feb 2</span>
+</div>
+</li>
+</ul>
+</div>
+</div>
+</article>
+<!-- Suggested Resolution Card -->
+<article class="bg-surface-container-lowest border border-outline-variant rounded-xl shadow-[0_1px_2px_0_rgba(0,0,0,0.05)] flex flex-col overflow-hidden relative">
+<!-- Subtle AI Background Pattern / Gradient -->
+<div class="absolute inset-0 bg-gradient-to-br from-primary-fixed/20 to-transparent pointer-events-none"></div>
+<div class="px-md py-sm border-b border-outline-variant bg-surface-bright relative z-10 flex justify-between items-center">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-primary text-[18px]">auto_awesome</span>
+<h2 class="font-label-caps text-label-caps text-primary font-bold uppercase tracking-wider">Suggested Resolution</h2>
+</div>
+<div class="bg-secondary-container/30 border border-secondary text-secondary px-sm py-[2px] rounded-full font-label-caps text-label-caps flex items-center gap-[4px]">
+<span class="material-symbols-outlined text-[14px]">verified</span>
+                            Verified · 410ms
+                        </div>
+</div>
+<div class="p-lg flex flex-col gap-lg relative z-10">
+<!-- Content -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-lg p-md shadow-sm border-l-[3px] border-l-primary-container">
+<p class="font-body-lg text-body-lg text-on-surface font-semibold leading-relaxed">
+                                "Re-authenticate the CRM connection under Settings → Integrations — this fixed the same sync issue on your account in March."
+                            </p>
+</div>
+<!-- Sources -->
+<div class="flex flex-col gap-sm">
+<h4 class="font-label-caps text-label-caps text-outline uppercase tracking-wider">Sources</h4>
+<div class="flex flex-wrap gap-sm">
+<button class="flex items-center gap-xs bg-surface-container-low border border-outline-variant rounded-lg px-sm py-[6px] hover:bg-surface-container-high hover:border-outline transition-all group">
+<span class="material-symbols-outlined text-outline text-[16px] group-hover:text-primary">description</span>
+<span class="font-mono-sm text-mono-sm text-on-surface-variant group-hover:text-on-surface">FAQ.pdf</span>
+</button>
+<button class="flex items-center gap-xs bg-surface-container-low border border-outline-variant rounded-lg px-sm py-[6px] hover:bg-surface-container-high hover:border-outline transition-all group">
+<span class="material-symbols-outlined text-outline text-[16px] group-hover:text-primary">confirmation_number</span>
+<span class="font-mono-sm text-mono-sm text-on-surface-variant group-hover:text-on-surface">Ticket #1023</span>
+</button>
+</div>
+</div>
+<!-- Actions -->
+<div class="flex items-center gap-sm pt-md border-t border-outline-variant">
+<button class="bg-primary-container hover:bg-primary text-on-primary font-body-md text-body-md font-semibold px-md py-[8px] rounded-lg transition-colors flex items-center gap-xs shadow-sm">
+<span class="material-symbols-outlined text-[18px]">send</span>
+                                Send reply
+                            </button>
+<button class="bg-surface-container-lowest border border-outline-variant hover:bg-surface-container-low text-on-surface font-body-md text-body-md font-semibold px-md py-[8px] rounded-lg transition-colors">
+                                Edit
+                            </button>
+</div>
+</div>
+</article>
+</section>
+</div>
+</main>
+</body></html>

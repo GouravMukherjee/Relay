@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Relay - Onboarding</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;800;900&amp;family=Geist+Mono:wght@400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-primary": "#ffffff",
+                        "primary-container": "#4f46e5",
+                        "error-container": "#ffdad6",
+                        "tertiary-fixed": "#ffdbcc",
+                        "primary-fixed-dim": "#c3c0ff",
+                        "primary": "#3525cd",
+                        "on-tertiary": "#ffffff",
+                        "error": "#ba1a1a",
+                        "tertiary-fixed-dim": "#ffb695",
+                        "surface-container-low": "#f6f2f7",
+                        "secondary": "#006c49",
+                        "on-primary-container": "#dad7ff",
+                        "inverse-on-surface": "#f3f0f4",
+                        "tertiary-container": "#a44100",
+                        "surface-container-highest": "#e4e1e6",
+                        "surface-tint": "#4d44e3",
+                        "secondary-fixed": "#6ffbbe",
+                        "primary-fixed": "#e2dfff",
+                        "on-tertiary-fixed": "#351000",
+                        "on-secondary-fixed-variant": "#005236",
+                        "surface-dim": "#dcd9dd",
+                        "on-error": "#ffffff",
+                        "on-surface-variant": "#464555",
+                        "on-secondary": "#ffffff",
+                        "on-surface": "#1b1b1e",
+                        "secondary-fixed-dim": "#4edea3",
+                        "surface": "#fbf8fc",
+                        "on-background": "#1b1b1e",
+                        "background": "#fbf8fc",
+                        "inverse-primary": "#c3c0ff",
+                        "surface-variant": "#e4e1e6",
+                        "surface-container-high": "#eae7eb",
+                        "inverse-surface": "#303033",
+                        "on-error-container": "#93000a",
+                        "secondary-container": "#6cf8bb",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary-container": "#ffd2be",
+                        "on-secondary-fixed": "#002113",
+                        "on-primary-fixed-variant": "#3323cc",
+                        "tertiary": "#7e3000",
+                        "on-primary-fixed": "#0f0069",
+                        "outline-variant": "#c7c4d8",
+                        "on-secondary-container": "#00714d",
+                        "surface-bright": "#fbf8fc",
+                        "outline": "#777587",
+                        "on-tertiary-fixed-variant": "#7b2f00",
+                        "surface-container": "#f0edf1"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "xl": "40px",
+                        "sm": "8px",
+                        "container-max": "1440px",
+                        "xs": "4px",
+                        "lg": "24px",
+                        "gutter": "20px",
+                        "md": "16px",
+                        "base": "4px"
+                    },
+                    "fontFamily": {
+                        "label-caps": ["Geist"],
+                        "h2": ["Geist"],
+                        "h1": ["Geist"],
+                        "body-lg": ["Geist"],
+                        "h3": ["Geist"],
+                        "body-md": ["Geist"],
+                        "mono-sm": ["Geist Mono"]
+                    },
+                    "fontSize": {
+                        "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                        "h2": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                        "h1": ["30px", {"lineHeight": "36px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "h3": ["18px", {"lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "mono-sm": ["13px", {"lineHeight": "18px", "fontWeight": "400"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'Geist', sans-serif; }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid #E4E4E7;
+        }
+        .dash-border {
+            background-image: dashed-border;
+        }
+    </style>
+</head>
+<body class="bg-surface min-h-screen flex flex-col text-on-surface antialiased">
+<!-- Top Navigation (Minimal for Onboarding) -->
+<!-- Suppressing main nav shell as this is an onboarding/transactional state -->
+<header class="w-full h-16 flex items-center px-lg border-b border-outline-variant bg-surface sticky top-0 z-50">
+<div class="max-w-container-max mx-auto w-full flex justify-between items-center">
+<div class="font-h2 text-h2 font-black tracking-tighter text-primary">Relay</div>
+<div class="flex items-center gap-md">
+<button class="text-on-surface-variant hover:text-primary transition-colors cursor-pointer active:opacity-70">
+<span class="material-symbols-outlined text-[24px]" style="font-variation-settings: 'FILL' 0;">help</span>
+</button>
+</div>
+</div>
+</header>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col items-center justify-center p-lg relative overflow-hidden">
+<!-- Subtle Background Decorative Elements -->
+<div class="absolute inset-0 pointer-events-none opacity-[0.03] flex justify-center items-center z-0">
+<svg fill="none" height="800" viewbox="0 0 800 800" width="800" xmlns="http://www.w3.org/2000/svg">
+<circle cx="400" cy="400" r="300" stroke="#4F46E5" stroke-dasharray="10 10" stroke-width="1"></circle>
+<circle cx="400" cy="400" r="200" stroke="#4F46E5" stroke-dasharray="5 5" stroke-width="1"></circle>
+</svg>
+</div>
+<div class="w-full max-w-[600px] z-10 flex flex-col gap-xl">
+<!-- Header Section -->
+<div class="text-center flex flex-col gap-sm">
+<h1 class="font-h1 text-h1 text-on-surface">Add your knowledge to get started</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-[480px] mx-auto">
+                    Relay answers from your own documents. Upload a few to see it work — it parses and indexes them automatically.
+                </p>
+</div>
+<!-- Upload Card -->
+<div class="glass-card rounded-xl p-xl flex flex-col gap-lg items-center shadow-sm relative overflow-hidden group hover:border-primary/30 transition-colors duration-300">
+<!-- Dropzone Area -->
+<div class="w-full rounded-lg border-2 border-dashed border-outline-variant bg-surface-container-low hover:bg-surface-container-high hover:border-primary transition-all duration-300 flex flex-col items-center justify-center py-xl px-lg cursor-pointer" id="dropzone">
+<div class="w-16 h-16 rounded-full bg-primary-fixed flex items-center justify-center mb-md group-hover:scale-110 transition-transform duration-300">
+<span class="material-symbols-outlined text-[32px] text-primary" style="font-variation-settings: 'FILL' 1;">upload_file</span>
+</div>
+<p class="font-h3 text-h3 text-on-surface mb-xs">Drag and drop files here</p>
+<p class="font-body-md text-body-md text-on-surface-variant">PDF, DOCX, TXT up to 50MB</p>
+<input accept=".pdf,.docx,.txt" class="hidden" id="file-upload" multiple="" type="file"/>
+</div>
+<!-- Divider -->
+<div class="w-full flex items-center gap-md">
+<div class="h-px bg-outline-variant flex-1"></div>
+<span class="font-label-caps text-label-caps text-outline uppercase">or</span>
+<div class="h-px bg-outline-variant flex-1"></div>
+</div>
+<!-- Actions -->
+<div class="flex flex-col sm:flex-row gap-md w-full">
+<button class="flex-1 bg-primary-container text-on-primary font-body-lg text-body-lg h-12 rounded-lg flex items-center justify-center gap-sm hover:bg-primary transition-colors cursor-pointer active:scale-[0.98]">
+                        Upload documents
+                    </button>
+<button class="flex-1 bg-surface-container-lowest text-on-surface border border-outline-variant font-body-lg text-body-lg h-12 rounded-lg flex items-center justify-center gap-sm hover:bg-surface-container-low transition-colors cursor-pointer active:scale-[0.98]">
+<svg class="w-5 h-5" fill="none" viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+<path d="M15.2 6.80005L21.3 17.5001H12L5.90002 6.80005H15.2Z" fill="#1b1b1e" fill-opacity="0.2"></path>
+<path d="M5.8999 6.79993H15.2L8.69995 18H2.49994L5.8999 6.79993Z" fill="#1b1b1e"></path>
+</svg>
+                        Connect Google Drive
+                    </button>
+</div>
+</div>
+<!-- Steps Footer -->
+<div class="flex justify-center items-center gap-sm font-mono-sm text-mono-sm text-outline mt-md">
+<span class="flex items-center gap-xs">
+<span class="material-symbols-outlined text-[16px]">counter_1</span> Add docs
+                </span>
+<span>·</span>
+<span class="flex items-center gap-xs opacity-50">
+<span class="material-symbols-outlined text-[16px]">counter_2</span> Join a call
+                </span>
+<span>·</span>
+<span class="flex items-center gap-xs opacity-50">
+<span class="material-symbols-outlined text-[16px]">counter_3</span> Get answers
+                </span>
+</div>
+</div>
+</main>
+<script>
+        // Simple drag and drop visual feedback
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('file-upload');
+
+        dropzone.addEventListener('click', () => fileInput.click());
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropzone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropzone.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropzone.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight(e) {
+            dropzone.classList.add('border-primary', 'bg-surface-container-high');
+        }
+
+        function unhighlight(e) {
+            dropzone.classList.remove('border-primary', 'bg-surface-container-high');
+        }
+    </script>
+</body></html>

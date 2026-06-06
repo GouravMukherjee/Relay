@@ -97,3 +97,20 @@ Corporate Minimalism for high-stakes, real-time B2B:
 
 The latency badge counts up to its value on each card to make the "<500 ms"
 claim visible.
+
+### Motion
+
+All animation is **Framer Motion**, driven by a shared vocabulary in `src/motion.ts`
+(easing, spring presets, reveal variants, hover/press helpers):
+
+- **Scroll-triggered fades** — `whileInView` + `viewport={inView}` (fire once) on
+  the qualification card, document table, and the Transcripts / Team grids.
+- **Staggered reveals** — `staggerParent` containers cascade their children:
+  sidebar nav, transcript lines, chat bubbles, qualifier rows, table rows, grid cards.
+- **Smooth hover/press** — `hoverCard` / `pressable` / `iconHover` on cards, buttons,
+  nav links, tabs, and icon controls; answer cards lift on hover.
+- **Presence** — `AnimatePresence` for card/transcript enter-exit, toast in/out,
+  expanding source snippets, and a cross-fade between dashboard ↔ section views.
+
+Continuous ambient indicators (the emerald live-pulse, the audio waveform) stay as
+lightweight CSS/rAF — Framer Motion owns every reveal, transition, and interaction.

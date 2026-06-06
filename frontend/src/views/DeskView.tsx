@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import type { RelaySessionState } from "../hooks/useRelaySession";
 import { api } from "../api/client";
 import { useBackend } from "../backend";
 import { DESK_CUSTOMER } from "../mock/dataset";
 import { Icon } from "../components/Icon";
 import { initials } from "../util";
+import { easeOut, fadeUp, iconHover, inView, pressable } from "../motion";
 
 interface Props {
   state: RelaySessionState;
@@ -57,7 +59,12 @@ export function DeskView({ state, onQuery }: Props) {
   return (
     <div className="split">
       {/* Left: conversation */}
-      <section className="col-left card-surface callpanel">
+      <motion.section
+        className="col-left card-surface callpanel"
+        initial={{ opacity: 0, x: -22 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.5, ease: easeOut }}
+      >
         <div className="callpanel-head">
           <div className="callpanel-head-row">
             <h2 className="label-caps">Conversation</h2>
@@ -66,14 +73,16 @@ export function DeskView({ state, onQuery }: Props) {
 
         <div className="transcript scroll" ref={scrollRef} style={{ gap: 12 }}>
           {state.utterances.length === 0 && !state.partial && (
-            <div className="empty-state" style={{ padding: 24 }}>
+            <motion.div className="empty-state" style={{ padding: 24 }} variants={fadeUp} initial="hidden" animate="show">
               <Icon name="forum" size={32} />
               <div className="small">A customer message pulls the right doc + their history into a resolution.</div>
-            </div>
+            </motion.div>
           )}
-          {state.utterances.map((u) => (
-            <ChatBubble key={u.utterance_id} speaker={u.speaker} text={u.text} name={c.name} />
-          ))}
+          <AnimatePresence initial={false}>
+            {state.utterances.map((u) => (
+              <ChatBubble key={u.utterance_id} speaker={u.speaker} text={u.text} name={c.name} />
+            ))}
+          </AnimatePresence>
           {state.partial && <ChatBubble speaker={state.partial.speaker} text={state.partial.text} name={c.name} />}
         </div>
 
@@ -85,9 +94,14 @@ export function DeskView({ state, onQuery }: Props) {
               onKeyDown={(e) => e.key === "Enter" && submit()}
               placeholder="Type a message…"
             />
-            <button className="composer-attach" title="Attach document" onClick={() => fileRef.current?.click()}>
+            <motion.button
+              className="composer-attach"
+              title="Attach document"
+              onClick={() => fileRef.current?.click()}
+              {...iconHover}
+            >
               <Icon name="attach_file" size={20} />
-            </button>
+            </motion.button>
             <input
               ref={fileRef}
               type="file"
@@ -95,17 +109,22 @@ export function DeskView({ state, onQuery }: Props) {
               hidden
               onChange={(e) => e.target.files?.[0] && onAttach(e.target.files[0])}
             />
-            <button className="composer-send" onClick={submit} title="Send">
+            <motion.button className="composer-send" onClick={submit} title="Send" {...pressable}>
               <Icon name="send" size={18} />
-            </button>
+            </motion.button>
           </div>
         </div>
-      </section>
+      </motion.section>
 
       {/* Right: customer + resolution */}
-      <section className="col-right">
+      <motion.section
+        className="col-right"
+        initial={{ opacity: 0, x: 22 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.5, ease: easeOut, delay: 0.08 }}
+      >
         <div className="stack scroll">
-          <div className="card-surface customer-card">
+          <motion.div className="card-surface customer-card" variants={fadeUp} initial="hidden" animate="show">
             <div className="section-label label-caps" style={{ paddingBottom: 16 }}>
               Customer
             </div>
@@ -124,17 +143,29 @@ export function DeskView({ state, onQuery }: Props) {
             </div>
 
             <div className="tickets-label label-caps">Recent Tickets</div>
-            {c.tickets.map((t) => (
-              <div className="ticket" key={t.title}>
+            {c.tickets.map((t, i) => (
+              <motion.div
+                className="ticket"
+                key={t.title}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.35, ease: easeOut, delay: 0.2 + i * 0.08 }}
+              >
                 <Icon name="task_alt" size={18} fill />
                 <span className="ticket-title">{t.title}</span>
                 <span className="ticket-meta mono">{t.meta}</span>
-              </div>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
 
           {resolution ? (
-            <div className="card-surface resolution-card">
+            <motion.div
+              className="card-surface resolution-card"
+              variants={fadeUp}
+              initial="hidden"
+              whileInView="show"
+              viewport={inView}
+            >
               <div className="resolution-head">
                 <span className="label-caps">
                   <Icon name="auto_awesome" size={16} fill />
@@ -158,22 +189,27 @@ export function DeskView({ state, onQuery }: Props) {
               <div className="tickets-label label-caps">Sources</div>
               <div className="source-list resolution-sources">
                 {resolution.sources.map((s) => (
-                  <span className="source-chip" key={s.document_id}>
+                  <motion.span
+                    className="source-chip"
+                    key={s.document_id}
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                  >
                     <Icon name="description" size={14} />
                     {s.title}
-                  </span>
+                  </motion.span>
                 ))}
               </div>
               <div className="resolution-actions">
-                <button className="btn-primary" onClick={onSendReply}>
+                <motion.button className="btn-primary" onClick={onSendReply} {...pressable}>
                   <Icon name="send" size={16} />
                   Send reply
-                </button>
-                <button className="btn-secondary" onClick={() => setEditing((v) => !v)}>
+                </motion.button>
+                <motion.button className="btn-secondary" onClick={() => setEditing((v) => !v)} {...pressable}>
                   {editing ? "Done" : "Edit"}
-                </button>
+                </motion.button>
               </div>
-            </div>
+            </motion.div>
           ) : (
             <div className="card-surface resolution-card">
               <div className="empty-state" style={{ padding: 16 }}>
@@ -183,7 +219,7 @@ export function DeskView({ state, onQuery }: Props) {
             </div>
           )}
         </div>
-      </section>
+      </motion.section>
     </div>
   );
 }
@@ -191,7 +227,12 @@ export function DeskView({ state, onQuery }: Props) {
 function ChatBubble({ speaker, text, name }: { speaker: string; text: string; name: string }) {
   const isRep = speaker === "rep" || speaker === "relay";
   return (
-    <div
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 12, x: isRep ? 14 : -14 }}
+      animate={{ opacity: 1, y: 0, x: 0 }}
+      exit={{ opacity: 0, scale: 0.96 }}
+      transition={{ type: "spring", stiffness: 360, damping: 28 }}
       style={{
         display: "flex",
         gap: 10,
@@ -214,6 +255,6 @@ function ChatBubble({ speaker, text, name }: { speaker: string; text: string; na
       >
         {text}
       </div>
-    </div>
+    </motion.div>
   );
 }

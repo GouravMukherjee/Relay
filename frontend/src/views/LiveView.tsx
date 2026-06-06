@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import type { RelaySessionState } from "../hooks/useRelaySession";
 import { api } from "../api/client";
 import { useBackend } from "../backend";
@@ -7,6 +7,7 @@ import { Waveform } from "../components/Waveform";
 import { RelayCard } from "../components/RelayCard";
 import { Icon } from "../components/Icon";
 import { clock } from "../util";
+import { easeOut, fadeUp, iconHover, item } from "../motion";
 
 interface Props {
   state: RelaySessionState;
@@ -39,16 +40,21 @@ export function LiveView({ state }: Props) {
   return (
     <div className="split">
       {/* Left: live call */}
-      <section className="col-left card-surface callpanel">
+      <motion.section
+        className="col-left card-surface callpanel"
+        initial={{ opacity: 0, x: -22 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.5, ease: easeOut }}
+      >
         <div className="callpanel-head">
           <div className="callpanel-head-row">
             <h2 className="label-caps">Live Call</h2>
             <div className="call-status">
               <span className="mono call-timer">{new Date().toTimeString().slice(0, 5)}</span>
-              <button className="mic-btn" title="Join / toggle microphone" onClick={onMic}>
+              <motion.button className="mic-btn" title="Join / toggle microphone" onClick={onMic} {...iconHover}>
                 <Icon name="mic" size={18} />
                 <span className="mic-dot" />
-              </button>
+              </motion.button>
             </div>
           </div>
           <Waveform active={!!state.partial} />
@@ -56,27 +62,36 @@ export function LiveView({ state }: Props) {
 
         <div className="transcript scroll" ref={scrollRef}>
           {state.utterances.length === 0 && !state.partial && (
-            <div className="empty-state" style={{ padding: 24 }}>
+            <motion.div className="empty-state" style={{ padding: 24 }} variants={fadeUp} initial="hidden" animate="show">
               <Icon name="hearing" size={32} />
               <div className="small">Listening for the conversation. Speak a question — or replay the demo beats.</div>
-            </div>
+            </motion.div>
           )}
-          {state.utterances.map((u, i) => (
-            <div className={`utt${i === last ? " active" : ""}`} key={u.utterance_id}>
-              <div className="utt-meta">
-                <span className={`spk-tag ${u.speaker}`}>{cap(u.speaker)}</span>
-                <span className="utt-time">{clock(u.ts)}</span>
-              </div>
-              <p className="utt-text">{u.text}</p>
-            </div>
-          ))}
+          <AnimatePresence initial={false}>
+            {state.utterances.map((u, i) => (
+              <motion.div
+                className={`utt${i === last ? " active" : ""}`}
+                key={u.utterance_id}
+                layout
+                variants={item}
+                initial="hidden"
+                animate="show"
+              >
+                <div className="utt-meta">
+                  <span className={`spk-tag ${u.speaker}`}>{cap(u.speaker)}</span>
+                  <span className="utt-time">{clock(u.ts)}</span>
+                </div>
+                <p className="utt-text">{u.text}</p>
+              </motion.div>
+            ))}
+          </AnimatePresence>
           {state.partial ? (
-            <div className="utt">
+            <motion.div className="utt" variants={item} initial="hidden" animate="show">
               <div className="utt-meta">
                 <span className={`spk-tag ${state.partial.speaker}`}>{cap(state.partial.speaker)}</span>
               </div>
               <p className="utt-text">{state.partial.text}</p>
-            </div>
+            </motion.div>
           ) : (
             state.utterances.length > 0 && (
               <div className="typing">
@@ -89,10 +104,15 @@ export function LiveView({ state }: Props) {
         </div>
 
         <div className="knowledge-strip">
-          <div className="dropzone" onClick={() => fileRef.current?.click()}>
+          <motion.div
+            className="dropzone"
+            onClick={() => fileRef.current?.click()}
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.99 }}
+          >
             <Icon name="upload_file" size={18} />
             Drop documents to add to Relay&apos;s knowledge
-          </div>
+          </motion.div>
           <input
             ref={fileRef}
             type="file"
@@ -105,24 +125,29 @@ export function LiveView({ state }: Props) {
             Connect Google Drive — coming soon
           </button>
         </div>
-      </section>
+      </motion.section>
 
       {/* Right: suggested answers */}
-      <section className="col-right">
+      <motion.section
+        className="col-right"
+        initial={{ opacity: 0, x: 22 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.5, ease: easeOut, delay: 0.08 }}
+      >
         <div className="section-label label-caps">
           <Icon name="auto_awesome" size={16} fill />
           Suggested Answers
         </div>
         <div className="cards-scroll scroll">
           {state.cards.length === 0 ? (
-            <div className="empty-state">
+            <motion.div className="empty-state" variants={fadeUp} initial="hidden" animate="show">
               <Icon name="bolt" size={40} />
               <div className="big">Answers appear here, instantly</div>
               <div className="small">
                 Every card is pulled from your documents and cited — in under half a second. The model
                 retrieves, it doesn&apos;t guess.
               </div>
-            </div>
+            </motion.div>
           ) : (
             <AnimatePresence>
               {state.cards.map((c, i) => (
@@ -131,7 +156,7 @@ export function LiveView({ state }: Props) {
             </AnimatePresence>
           )}
         </div>
-      </section>
+      </motion.section>
     </div>
   );
 }

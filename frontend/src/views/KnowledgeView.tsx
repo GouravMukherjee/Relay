@@ -1,10 +1,12 @@
 import { useRef } from "react";
+import { motion } from "framer-motion";
 import { api } from "../api/client";
 import { useResource } from "../hooks/useResource";
 import { useBackend } from "../backend";
 import { DEMO_DOCS } from "../mock/dataset";
 import { Icon } from "../components/Icon";
 import { clock } from "../util";
+import { fadeUp, inView, item, pressable, staggerParent } from "../motion";
 
 export function KnowledgeView() {
   const { call } = useBackend();
@@ -32,15 +34,15 @@ export function KnowledgeView() {
 
   return (
     <div className="section-page">
-      <div className="section-page-head">
+      <motion.div className="section-page-head" variants={fadeUp} initial="hidden" animate="show">
         <div>
           <h1 className="page-title">Knowledge</h1>
           <p className="page-sub">Documents Relay retrieves from. Drop a file to ingest it.</p>
         </div>
-        <button className="btn-primary" onClick={() => fileRef.current?.click()}>
+        <motion.button className="btn-primary" onClick={() => fileRef.current?.click()} {...pressable}>
           <Icon name="upload_file" size={16} />
           Upload document
-        </button>
+        </motion.button>
         <input
           ref={fileRef}
           type="file"
@@ -48,14 +50,20 @@ export function KnowledgeView() {
           hidden
           onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])}
         />
-      </div>
+      </motion.div>
 
       {demo && <DemoBanner endpoint="GET /documents" />}
       {loading && <div className="page-empty">Loading documents…</div>}
       {error && <div className="page-empty error">Couldn’t load documents — {error}</div>}
 
       {data && (
-        <div className="card-surface table">
+        <motion.div
+          className="card-surface table"
+          variants={staggerParent(0.05)}
+          initial="hidden"
+          whileInView="show"
+          viewport={inView}
+        >
           <div className="table-head">
             <span>Title</span>
             <span>Status</span>
@@ -64,7 +72,7 @@ export function KnowledgeView() {
             <span></span>
           </div>
           {data.map((d) => (
-            <div className="table-row" key={d.document_id}>
+            <motion.div className="table-row" key={d.document_id} variants={item} whileHover={{ x: 4 }}>
               <span className="td-title">
                 <Icon name="description" size={18} />
                 {d.title}
@@ -75,12 +83,18 @@ export function KnowledgeView() {
               </span>
               <span className="mono">{d.chunk_count}</span>
               <span className="mono">{clock(d.created_at) || "—"}</span>
-              <button className="row-action" onClick={() => onDelete(d.document_id, d.title)} title="Delete">
+              <motion.button
+                className="row-action"
+                onClick={() => onDelete(d.document_id, d.title)}
+                title="Delete"
+                whileHover={{ scale: 1.15 }}
+                whileTap={{ scale: 0.85 }}
+              >
                 <Icon name="delete" size={18} />
-              </button>
-            </div>
+              </motion.button>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       )}
     </div>
   );
@@ -88,9 +102,14 @@ export function KnowledgeView() {
 
 export function DemoBanner({ endpoint }: { endpoint: string }) {
   return (
-    <div className="demo-banner">
+    <motion.div
+      className="demo-banner"
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: 0.1 }}
+    >
       <Icon name="info" size={16} />
       Showing demo data. Wired to <code>{endpoint}</code> — connect the gateway (VITE_USE_MOCK=false) for live data.
-    </div>
+    </motion.div>
   );
 }

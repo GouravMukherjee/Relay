@@ -5,6 +5,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { USE_MOCK } from "./config";
 import type { ApiError } from "./api/client";
 
@@ -74,12 +75,23 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={value}>
       {children}
       <div className="toast-stack">
-        {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.kind}`} onClick={() => remove(t.id)}>
-            <span className="toast-dot" />
-            {t.text}
-          </div>
-        ))}
+        <AnimatePresence initial={false}>
+          {toasts.map((t) => (
+            <motion.div
+              key={t.id}
+              layout
+              className={`toast ${t.kind}`}
+              onClick={() => remove(t.id)}
+              initial={{ opacity: 0, x: -24, scale: 0.96 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: -24, scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 400, damping: 32 }}
+            >
+              <span className="toast-dot" />
+              {t.text}
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
     </Ctx.Provider>
   );

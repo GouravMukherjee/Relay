@@ -1,8 +1,10 @@
+import { motion } from "framer-motion";
 import { api } from "../api/client";
 import { useResource } from "../hooks/useResource";
 import { DEMO_SESSIONS } from "../mock/dataset";
 import { Icon } from "../components/Icon";
 import { DemoBanner } from "./KnowledgeView";
+import { fadeUp, hoverCard, inView, item, staggerParent } from "../motion";
 
 const MODE_ICON: Record<string, string> = { live: "graphic_eq", desk: "support_agent", intake: "person_search" };
 
@@ -14,21 +16,27 @@ export function TranscriptsView() {
 
   return (
     <div className="section-page">
-      <div className="section-page-head">
+      <motion.div className="section-page-head" variants={fadeUp} initial="hidden" animate="show">
         <div>
           <h1 className="page-title">Transcripts</h1>
           <p className="page-sub">Past sessions and the cards they produced.</p>
         </div>
-      </div>
+      </motion.div>
 
       {demo && <DemoBanner endpoint="GET /sessions" />}
       {loading && <div className="page-empty">Loading sessions…</div>}
       {error && <div className="page-empty error">Couldn’t load sessions — {error}</div>}
 
       {data && (
-        <div className="session-grid">
+        <motion.div
+          className="session-grid"
+          variants={staggerParent(0.06)}
+          initial="hidden"
+          whileInView="show"
+          viewport={inView}
+        >
           {data.map((s) => (
-            <button className="card-surface session-card" key={s.session_id}>
+            <motion.button className="card-surface session-card" key={s.session_id} variants={item} {...hoverCard}>
               <div className="session-card-top">
                 <span className={`mode-chip ${s.mode}`}>
                   <Icon name={MODE_ICON[s.mode] ?? "graphic_eq"} size={16} />
@@ -43,9 +51,9 @@ export function TranscriptsView() {
                 </span>
                 <span className="mono">{new Date(s.started_at).toLocaleString()}</span>
               </div>
-            </button>
+            </motion.button>
           ))}
-        </div>
+        </motion.div>
       )}
     </div>
   );

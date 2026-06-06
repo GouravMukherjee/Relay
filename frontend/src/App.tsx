@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useRelaySession } from "./hooks/useRelaySession";
 import { useBackend } from "./backend";
 import { api } from "./api/client";
+import { easeOut } from "./motion";
 import { TopNav } from "./components/TopNav";
 import { Sidebar, type NavKey } from "./components/Sidebar";
 import { Icon } from "./components/Icon";
@@ -46,21 +48,45 @@ export function App() {
       <div className="workspace">
         <Sidebar mode={state.mode} nav={nav} onNav={setNav} onNewAnalysis={onNewAnalysis} />
         <main className="main">
-          {nav === "dashboard" && state.mode === "live" && <LiveView state={state} />}
-          {nav === "dashboard" && state.mode === "desk" && <DeskView state={state} onQuery={sendQuery} />}
-          {nav === "dashboard" && state.mode === "intake" && <IntakeView state={state} onRoute={routeLead} />}
-          {nav === "knowledge" && <KnowledgeView />}
-          {nav === "transcripts" && <TranscriptsView />}
-          {nav === "team" && <TeamView />}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={nav === "dashboard" ? `dash-${state.mode}` : nav}
+              className="view-wrap"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.28, ease: easeOut }}
+            >
+              {nav === "dashboard" && state.mode === "live" && <LiveView state={state} />}
+              {nav === "dashboard" && state.mode === "desk" && <DeskView state={state} onQuery={sendQuery} />}
+              {nav === "dashboard" && state.mode === "intake" && <IntakeView state={state} onRoute={routeLead} />}
+              {nav === "knowledge" && <KnowledgeView />}
+              {nav === "transcripts" && <TranscriptsView />}
+              {nav === "team" && <TeamView />}
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
 
-      {canPlayBeat && nav === "dashboard" && (
-        <button className="beat-pill" onClick={onBeat} disabled={!beatsLeft} title="Play the next scripted demo line">
-          <Icon name="play_arrow" size={16} fill />
-          {beatsLeft ? "Next demo beat" : "Demo complete"}
-        </button>
-      )}
+      <AnimatePresence>
+        {canPlayBeat && nav === "dashboard" && (
+          <motion.button
+            className="beat-pill"
+            onClick={onBeat}
+            disabled={!beatsLeft}
+            title="Play the next scripted demo line"
+            initial={{ opacity: 0, y: 20, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            whileHover={{ scale: 1.04, y: -2 }}
+            whileTap={{ scale: 0.96 }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+          >
+            <Icon name="play_arrow" size={16} fill />
+            {beatsLeft ? "Next demo beat" : "Demo complete"}
+          </motion.button>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

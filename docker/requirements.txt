@@ -1,0 +1,28 @@
+# Relay backend — shared deps for gateway, worker, and retrieval services.
+# Pinned loosely for hackathon speed; tighten before any real deployment.
+
+# Web / API
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+websockets==14.1
+python-multipart==0.0.20          # multipart upload for POST /documents
+pydantic==2.10.4
+pydantic-settings==2.7.1
+
+# DB (Postgres + pgvector)
+asyncpg==0.30.0
+pgvector==0.3.6
+
+# HTTP client (internal service calls, Moss, Unsiloed)
+httpx==0.28.1
+
+# LLM synthesis
+anthropic==0.42.0
+
+# Real-time audio worker (LiveKit Agents)
+livekit==0.20.1
+livekit-agents==0.12.4
+
+# Utilities
+numpy==2.2.1
+python-dotenv==1.0.1

@@ -1,11 +1,12 @@
 import { useEffect, useRef } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import type { RelaySessionState } from "../hooks/useRelaySession";
 import { api } from "../api/client";
 import { useBackend } from "../backend";
 import { Waveform } from "../components/Waveform";
 import { Icon } from "../components/Icon";
 import { clock, initials } from "../util";
+import { fadeUp, inView, item, pressable, staggerParent } from "../motion";
 
 interface Props {
   state: RelaySessionState;
@@ -55,27 +56,36 @@ export function IntakeView({ state, onRoute }: Props) {
 
         <div className="transcript scroll" ref={scrollRef}>
           {state.utterances.length === 0 && !state.partial && (
-            <div className="empty-state" style={{ padding: 24 }}>
+            <motion.div className="empty-state" style={{ padding: 24 }} variants={fadeUp} initial="hidden" animate="show">
               <Icon name="support_agent" size={32} />
               <div className="small">The agent qualifies the caller, scores ICP fit, and routes hot leads.</div>
-            </div>
+            </motion.div>
           )}
-          {state.utterances.map((u, i) => (
-            <div className={`utt${i === last && u.speaker === "relay" ? " active" : ""}`} key={u.utterance_id}>
-              <div className="utt-meta">
-                <span className={`spk-tag ${u.speaker}`}>{cap(u.speaker)}</span>
-                <span className="utt-time">{clock(u.ts)}</span>
-              </div>
-              <p className="utt-text">{u.text}</p>
-            </div>
-          ))}
+          <AnimatePresence initial={false}>
+            {state.utterances.map((u, i) => (
+              <motion.div
+                className={`utt${i === last && u.speaker === "relay" ? " active" : ""}`}
+                key={u.utterance_id}
+                layout
+                variants={item}
+                initial="hidden"
+                animate="show"
+              >
+                <div className="utt-meta">
+                  <span className={`spk-tag ${u.speaker}`}>{cap(u.speaker)}</span>
+                  <span className="utt-time">{clock(u.ts)}</span>
+                </div>
+                <p className="utt-text">{u.text}</p>
+              </motion.div>
+            ))}
+          </AnimatePresence>
           {state.partial && (
-            <div className="utt">
+            <motion.div className="utt" variants={item} initial="hidden" animate="show">
               <div className="utt-meta">
                 <span className={`spk-tag ${state.partial.speaker}`}>{cap(state.partial.speaker)}</span>
               </div>
               <p className="utt-text">{state.partial.text}</p>
-            </div>
+            </motion.div>
           )}
         </div>
       </section>
@@ -96,7 +106,7 @@ export function IntakeView({ state, onRoute }: Props) {
             </div>
           ) : (
             <>
-              <motion.div className="card-surface lead-card" layout>
+              <motion.div className="card-surface lead-card" layout variants={fadeUp} initial="hidden" animate="show">
                 <div className="section-label label-caps" style={{ paddingBottom: 16 }}>
                   Lead
                 </div>
@@ -109,47 +119,66 @@ export function IntakeView({ state, onRoute }: Props) {
                     </div>
                   </div>
                   <div className="score-wrap">
-                    <div className="score-ring" style={{ ["--p" as string]: lead.score }}>
+                    <motion.div
+                      className="score-ring"
+                      style={{ ["--p" as string]: lead.score }}
+                      initial={{ scale: 0.7, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 18 }}
+                    >
                       <b>{lead.score}</b>
-                    </div>
+                    </motion.div>
                     <span className={`temp-badge ${lead.status}`}>{lead.status}</span>
                   </div>
                 </div>
               </motion.div>
 
-              <div className="card-surface qual-card">
+              <motion.div
+                className="card-surface qual-card"
+                variants={fadeUp}
+                initial="hidden"
+                whileInView="show"
+                viewport={inView}
+              >
                 <div className="label-caps">Qualification</div>
-                {QUALS.map((q) => {
-                  const v = lead.qualifiers[q.key];
-                  return (
-                    <div className="qual-row" key={q.key}>
-                      <span className={`qual-check ${v ? "filled" : "empty"}`}>
-                        <Icon name={v ? "check_circle" : "radio_button_unchecked"} size={20} fill={!!v} />
-                      </span>
-                      <div className="qual-body">
-                        <div className="k">{q.label}</div>
-                        <div className={`v${v ? "" : " pending"}`}>{v ?? "listening…"}</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                <motion.div variants={staggerParent(0.08)} initial="hidden" animate="show">
+                  {QUALS.map((q) => {
+                    const v = lead.qualifiers[q.key];
+                    return (
+                      <motion.div className="qual-row" key={q.key} variants={item}>
+                        <span className={`qual-check ${v ? "filled" : "empty"}`}>
+                          <Icon name={v ? "check_circle" : "radio_button_unchecked"} size={20} fill={!!v} />
+                        </span>
+                        <div className="qual-body">
+                          <div className="k">{q.label}</div>
+                          <div className={`v${v ? "" : " pending"}`}>{v ?? "listening…"}</div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </motion.div>
+              </motion.div>
 
               <div className="intake-actions">
                 {routed && (
-                  <span className="routed-note">
+                  <motion.span className="routed-note" initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}>
                     <Icon name="check_circle" size={16} fill />
                     Routed to {lead.routed_to}
-                  </span>
+                  </motion.span>
                 )}
-                <button className="btn-secondary" disabled={routed} onClick={onBook}>
+                <motion.button className="btn-secondary" disabled={routed} onClick={onBook} {...pressable}>
                   <Icon name="calendar_month" size={16} />
                   Book meeting
-                </button>
-                <button className="btn-primary" onClick={onRoute} disabled={routed || lead.status !== "hot"}>
+                </motion.button>
+                <motion.button
+                  className="btn-primary"
+                  onClick={onRoute}
+                  disabled={routed || lead.status !== "hot"}
+                  {...pressable}
+                >
                   Route to #sales
                   <Icon name="send" size={16} />
-                </button>
+                </motion.button>
               </div>
             </>
           )}

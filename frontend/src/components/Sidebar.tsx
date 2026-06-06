@@ -1,6 +1,8 @@
+import { motion } from "framer-motion";
 import { USE_MOCK } from "../config";
 import type { Mode } from "../types";
 import { Icon } from "./Icon";
+import { easeOut, itemLeft, pressable, staggerParent } from "../motion";
 
 export type NavKey = "dashboard" | "transcripts" | "knowledge" | "team";
 
@@ -26,27 +28,35 @@ interface Props {
 
 export function Sidebar({ mode, nav, onNav, onNewAnalysis }: Props) {
   return (
-    <aside className="sidebar">
+    <motion.aside
+      className="sidebar"
+      initial={{ x: -40, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      transition={{ duration: 0.5, ease: easeOut }}
+    >
       <div className="sidebar-head">
         <h2 className="label-caps">{TITLES[mode]}</h2>
-        <button className="btn-new" onClick={onNewAnalysis}>
+        <motion.button className="btn-new" onClick={onNewAnalysis} {...pressable}>
           <Icon name="add" size={18} />
           New Analysis
-        </button>
+        </motion.button>
       </div>
 
-      <nav className="sidebar-nav">
-        {NAV.map((item) => (
-          <button
-            key={item.key}
-            className={`side-link${nav === item.key ? " active" : ""}`}
-            onClick={() => onNav(item.key)}
+      <motion.nav className="sidebar-nav" variants={staggerParent(0.07, 0.15)} initial="hidden" animate="show">
+        {NAV.map((entry) => (
+          <motion.button
+            key={entry.key}
+            className={`side-link${nav === entry.key ? " active" : ""}`}
+            onClick={() => onNav(entry.key)}
+            variants={itemLeft}
+            whileHover={{ x: 4 }}
+            whileTap={{ scale: 0.98 }}
           >
-            <Icon name={item.icon} size={20} fill={nav === item.key} />
-            {item.label}
-          </button>
+            <Icon name={entry.icon} size={20} fill={nav === entry.key} />
+            {entry.label}
+          </motion.button>
         ))}
-      </nav>
+      </motion.nav>
 
       {USE_MOCK && (
         <div className="sidebar-foot">
@@ -56,6 +66,6 @@ export function Sidebar({ mode, nav, onNav, onNewAnalysis }: Props) {
           </span>
         </div>
       )}
-    </aside>
+    </motion.aside>
   );
 }

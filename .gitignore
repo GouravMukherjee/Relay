@@ -1,0 +1,8 @@
+# Local tool state
+.swarm/
+.codex/
+ruvector.db
+
+# SQLite working files
+*.db-shm
+*.db-wal

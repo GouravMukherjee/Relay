@@ -59,6 +59,31 @@ async def get_me(
     return user_to_schema(user)
 
 
+class UpdateMeRequest(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=120)
+    email: str | None = Field(None, max_length=254)
+
+
+@router.patch(
+    "/me",
+    response_model=UserSchema,
+    summary="Update the current user's profile (name / email display)",
+)
+async def update_me(
+    body: UpdateMeRequest,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_session),
+) -> UserSchema:
+    """Patch the mutable profile fields. Updating email here changes the display
+    name only — Supabase auth email requires a separate flow via the client SDK."""
+    if body.name is not None:
+        user.name = body.name.strip()
+    if body.email is not None:
+        user.email = body.email.strip() or None
+    await db.flush()
+    return user_to_schema(user)
+
+
 @router.post(
     "/tts",
     summary="Synthesize speech for a card answer (MiniMax whisper-back)",

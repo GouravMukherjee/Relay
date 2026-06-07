@@ -4,13 +4,17 @@ import type { Mode } from "../types";
 import { Icon } from "./Icon";
 import { easeOut, itemLeft, pressable, staggerParent } from "../motion";
 
-export type NavKey = "dashboard" | "transcripts" | "knowledge" | "team";
+export type NavKey = "dashboard" | "transcripts" | "knowledge" | "team" | "account";
 
 const NAV: { key: NavKey; icon: string; label: string }[] = [
   { key: "dashboard", icon: "dashboard", label: "Dashboard" },
   { key: "transcripts", icon: "chat", label: "Transcripts" },
   { key: "knowledge", icon: "menu_book", label: "Knowledge" },
   { key: "team", icon: "group", label: "Team" },
+];
+
+const NAV_BOTTOM: { key: NavKey; icon: string; label: string }[] = [
+  { key: "account", icon: "account_circle", label: "Account" },
 ];
 
 const TITLES: Record<Mode, string> = {
@@ -72,10 +76,23 @@ export function Sidebar({ mode, nav, onNav, onNewAnalysis, status, collapsed }: 
       </motion.nav>
 
       <div className="sidebar-foot">
+        {NAV_BOTTOM.map((entry) => (
+          <motion.button
+            key={entry.key}
+            className={`side-link side-link-sm${nav === entry.key ? " active" : ""}`}
+            onClick={() => onNav(entry.key)}
+            title={collapsed ? entry.label : undefined}
+            whileHover={{ x: collapsed ? 0 : 4 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            <Icon name={entry.icon} size={20} fill={nav === entry.key} />
+            <span>{entry.label}</span>
+          </motion.button>
+        ))}
         <span className="conn-flag" title={`Backend · ${BACKEND_HOST}`}>
           <span className={`conn-dot ${status}`} />
           <span className="conn-label">
-            {status === "active" ? "Connected" : status === "connecting" ? "Connecting…" : "Offline"}
+            {status === "active" ? "Online" : status === "connecting" ? "Connecting…" : "Offline"}
           </span>
         </span>
       </div>

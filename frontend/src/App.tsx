@@ -6,12 +6,14 @@ import { api } from "./api/client";
 import { easeOut } from "./motion";
 import { TopNav } from "./components/TopNav";
 import { Sidebar, type NavKey } from "./components/Sidebar";
+import { SettingsModal } from "./components/SettingsModal";
 import { LiveView } from "./views/LiveView";
 import { DeskView } from "./views/DeskView";
 import { IntakeView } from "./views/IntakeView";
 import { KnowledgeView } from "./views/KnowledgeView";
 import { TranscriptsView } from "./views/TranscriptsView";
 import { TeamView } from "./views/TeamView";
+import { AccountView } from "./views/AccountView";
 import { AuthProvider } from "./auth/AuthContext";
 import { LoginGate } from "./auth/LoginGate";
 import { AuthBridge } from "./auth/AuthBridge";
@@ -27,6 +29,7 @@ function Dashboard({ account }: { account?: Account }) {
   const { state, setMode, sendQuery, routeLead } = useRelaySession("live");
   const { call, toast } = useBackend();
   const [nav, setNav] = useState<NavKey>("dashboard");
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Surface backend connection errors as a toast.
   const lastShownError = useRef<string | null>(null);
@@ -50,10 +53,10 @@ function Dashboard({ account }: { account?: Account }) {
     });
   };
 
-  const onSettings = () => toast("Settings — wired to GET /me · pending setup", "info");
-
   // Sidebar collapse state, remembered across reloads.
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem("relay.sidebar") === "collapsed");
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem("relay.sidebar") === "collapsed"
+  );
   const toggleSidebar = () => {
     setCollapsed((c) => {
       const next = !c;
@@ -77,7 +80,8 @@ function Dashboard({ account }: { account?: Account }) {
         <TopNav
           mode={state.mode}
           onMode={onMode}
-          onSettings={onSettings}
+          onSettings={() => setSettingsOpen(true)}
+          onAccount={() => setNav("account")}
           onToggleSidebar={toggleSidebar}
           collapsed={collapsed}
           email={account?.email ?? null}
@@ -101,18 +105,21 @@ function Dashboard({ account }: { account?: Account }) {
                 {nav === "knowledge" && <KnowledgeView />}
                 {nav === "transcripts" && <TranscriptsView />}
                 {nav === "team" && <TeamView />}
+                {nav === "account" && (
+                  <AccountView email={account?.email ?? null} onSignOut={account?.onSignOut} />
+                )}
               </motion.div>
             </AnimatePresence>
           </main>
         </div>
       </div>
+
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }
 
 // ── Root ──────────────────────────────────────────────────────────────────────
-// Auth-gated: sign in, then the session (email + signOut) is bridged into the
-// Dashboard via props.
 
 export function App() {
   return (

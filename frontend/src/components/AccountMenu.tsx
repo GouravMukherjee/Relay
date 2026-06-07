@@ -9,9 +9,10 @@ import { pressable } from "../motion";
 interface Props {
   email: string | null;
   onSignOut?: () => void;
+  onAccount?: () => void;
 }
 
-export function AccountMenu({ email, onSignOut }: Props) {
+export function AccountMenu({ email, onSignOut, onAccount }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const initial = (email?.trim()?.[0] ?? "R").toUpperCase();
@@ -68,6 +69,18 @@ export function AccountMenu({ email, onSignOut }: Props) {
 
             <button
               className="account-action"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onAccount?.();
+              }}
+            >
+              <Icon name="manage_accounts" size={18} />
+              Account settings
+            </button>
+
+            <button
+              className="account-action account-action-danger"
               role="menuitem"
               onClick={() => {
                 setOpen(false);

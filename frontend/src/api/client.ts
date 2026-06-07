@@ -125,6 +125,8 @@ export const api = {
 
   // Account / chrome
   getMe: () => req<User>("/me"),
+  updateMe: (body: { name?: string; email?: string }) =>
+    req<User>("/me", { method: "PATCH", body: JSON.stringify(body) }),
   listUsers: () => req<{ users: User[] }>("/users"), // Team tab
   listSessions: () => req<{ sessions: SessionInfo[] }>("/sessions"), // Transcripts tab
   listNotifications: () => req<{ notifications: Notification[] }>("/notifications"),

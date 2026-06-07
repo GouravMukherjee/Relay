@@ -61,8 +61,11 @@ export function useRelaySession(initialMode: Mode) {
   const handleEvent = useCallback((e: ServerEvent) => {
     setState((s) => {
       switch (e.type) {
-        case "session.status":
-          return { ...s, status: e.data.status === "ended" ? "ended" : "active", backend: e.data.retrieval_backend };
+        case "session.status": {
+          const raw = e.data.status as string;
+          const status = raw === "ended" ? "ended" : raw === "reconnecting" ? "connecting" : "active";
+          return { ...s, status, backend: e.data.retrieval_backend };
+        }
         case "transcript.partial":
           return { ...s, partial: { speaker: e.data.speaker, text: e.data.text } };
         case "transcript.final":

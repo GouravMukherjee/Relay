@@ -41,6 +41,12 @@ export class WsTransport implements RelayTransport {
       this.retries = 0;
       this.queue.forEach((e) => ws.send(JSON.stringify(e)));
       this.queue = [];
+      // Tell the hook we're live so the sidebar shows "Connected" immediately.
+      this.emit({
+        type: "session.status",
+        ts: new Date().toISOString(),
+        data: { status: "active", retrieval_backend: "moss" },
+      });
     };
 
     ws.onmessage = (msg) => {
@@ -61,17 +67,22 @@ export class WsTransport implements RelayTransport {
 
     ws.onclose = () => {
       if (this.closedByUs) return;
-      this.emit({
-        type: "session.status",
-        ts: new Date().toISOString(),
-        data: { status: "ended", retrieval_backend: "moss" },
-      });
-      // Reconnect with capped exponential backoff.
       if (this.retries < 5) {
+        // Show "Connecting…" while we're retrying — not "Offline" yet.
+        this.emit({
+          type: "session.status",
+          ts: new Date().toISOString(),
+          data: { status: "reconnecting" as "active", retrieval_backend: "moss" },
+        });
         const delay = Math.min(1000 * 2 ** this.retries, 10000);
         this.retries++;
         setTimeout(() => !this.closedByUs && this.connect(), delay);
       } else {
+        this.emit({
+          type: "session.status",
+          ts: new Date().toISOString(),
+          data: { status: "ended", retrieval_backend: "moss" },
+        });
         this.emit({
           type: "error",
           ts: new Date().toISOString(),

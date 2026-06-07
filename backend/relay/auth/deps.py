@@ -224,9 +224,11 @@ async def current_claims_ws(
     if not token:
         raise _unauthorized("missing ws token")
 
-    # Origin check: lock to the configured frontend origin.
+    # Origin check: lock to the configured frontend origin(s). FRONTEND_ORIGIN may
+    # be a comma-separated list, so compare against the parsed allow-list.
     origin = websocket.headers.get("origin")
-    if origin and settings.frontend_origin and origin != settings.frontend_origin:
+    allowed = settings.cors_origins
+    if origin and allowed and origin.rstrip("/") not in allowed:
         raise _forbidden("origin not allowed")
 
     try:

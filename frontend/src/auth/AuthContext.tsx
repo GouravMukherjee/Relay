@@ -12,6 +12,13 @@ interface AuthContextValue {
   /** Returns the current JWT access token, or null if not authenticated. */
   getToken: () => string | null;
   signInWithEmail: (email: string, password: string) => Promise<{ error: string | null }>;
+  /** Create an account. `needsConfirmation` = true when Supabase requires email confirm. */
+  signUpWithEmail: (
+    email: string,
+    password: string
+  ) => Promise<{ error: string | null; needsConfirmation: boolean }>;
+  /** Redirect to Google OAuth; resolves only with an error (success navigates away). */
+  signInWithGoogle: () => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -46,12 +53,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error?.message ?? null };
   };
 
+  const signUpWithEmail = async (
+    email: string,
+    password: string
+  ): Promise<{ error: string | null; needsConfirmation: boolean }> => {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: window.location.origin },
+    });
+    if (error) return { error: error.message, needsConfirmation: false };
+    // If the project requires email confirmation, signUp returns a user but no
+    // session — the caller should prompt the user to check their inbox.
+    return { error: null, needsConfirmation: !data.session };
+  };
+
+  const signInWithGoogle = async (): Promise<{ error: string | null }> => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin },
+    });
+    // On success the browser navigates to Google; we only return on error.
+    return { error: error?.message ?? null };
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
   };
 
   return (
-    <AuthContext.Provider value={{ session, loading, getToken, signInWithEmail, signOut }}>
+    <AuthContext.Provider
+      value={{
+        session,
+        loading,
+        getToken,
+        signInWithEmail,
+        signUpWithEmail,
+        signInWithGoogle,
+        signOut,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

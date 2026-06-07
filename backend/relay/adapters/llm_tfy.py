@@ -1,24 +1,18 @@
 """TrueFoundry LLM adapter.
 
-Implements ``LLMClient`` via the TrueFoundry AI Gateway. Routes to:
-  - Claude (primary)   via Anthropic SDK with ``base_url=tfy_gateway_url``
-  - Qwen               via httpx against the same gateway (OpenAI-compat)
-  - Minimax            via httpx against the same gateway (OpenAI-compat)
-
-Model selection is controlled by ``settings.llm_model``
-(``"claude"`` | ``"qwen"`` | ``"minimax"``).
+Implements ``LLMClient`` via the TrueFoundry AI Gateway's OpenAI-compatible
+``/chat/completions`` endpoint. The model is a provider-prefixed gateway id
+(``settings.tfy_model``, e.g. ``anthropic/claude-sonnet-4-5`` for Claude, or a
+Qwen/Minimax id) — TFY routes and bills it. No direct provider SDK/key is used:
+Claude is reached THROUGH TrueFoundry, so only ``tfy_api_key`` is required.
 
 Required creds: ``tfy_api_key``, ``tfy_gateway_url``.
-For the Claude path, ``anthropic_api_key`` is also required.
 
 Grounding contract
 ------------------
 The LLM is instructed to answer ONLY from the provided chunks and to cite
 them. If the chunks do not contain a relevant answer, the model must return
 the sentinel value ``"__NO_CARD__"`` and this adapter returns ``None``.
-
-# TODO: confirm <TrueFoundry> API — exact model IDs, gateway path prefixes,
-# and required headers when routing through TFY.
 """
 from __future__ import annotations
 

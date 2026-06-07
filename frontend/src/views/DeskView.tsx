@@ -10,10 +10,11 @@ import type { CustomerProfile } from "../types";
 
 interface Props {
   state: RelaySessionState;
-  onQuery: (text: string, opts?: { customer_id?: string }) => void;
+  // Send a reply to the CUSTOMER (delivers to their widget + shows on the rep side).
+  onReply: (text: string, opts?: { card_id?: string }) => void | Promise<void>;
 }
 
-export function DeskView({ state, onQuery }: Props) {
+export function DeskView({ state, onReply }: Props) {
   const { call } = useBackend();
   const [text, setText] = useState("");
   const [editing, setEditing] = useState(false);
@@ -45,15 +46,20 @@ export function DeskView({ state, onQuery }: Props) {
     };
   }, []);
 
-  // Keep the editable reply in sync with the latest suggested resolution.
+  // Keep the editable reply in sync with the suggested resolution AS IT STREAMS IN.
+  // The card streams token-by-token (card.new → many card.update with the SAME card_id),
+  // so syncing on card_id alone froze `reply` at the first token ("I'"). Track the
+  // answer itself — but never clobber the rep's manual edits while they're editing.
   useEffect(() => {
-    if (resolution) setReply(resolution.answer);
-  }, [resolution?.card_id]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (resolution && !editing) setReply(resolution.answer);
+  }, [resolution?.answer, editing]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The bottom composer is the rep REPLYING to the customer (not a co-pilot query):
+  // it delivers to the customer's widget and stays visible in the conversation.
   const submit = () => {
     const t = text.trim();
     if (!t) return;
-    onQuery(t, customer ? { customer_id: customer.customer_id } : undefined);
+    void onReply(t);
     setText("");
   };
 
@@ -64,11 +70,9 @@ export function DeskView({ state, onQuery }: Props) {
     });
 
   const onSendReply = async () => {
-    if (!state.sessionId || !resolution) return;
-    await call("Send reply", () => api.sendReply(state.sessionId!, { card_id: resolution.card_id, text: reply }), {
-      endpoint: `POST /sessions/${state.sessionId}/reply`,
-      success: "Reply sent to customer",
-    });
+    if (!state.sessionId || !resolution || !reply.trim()) return;
+    // Same path as the composer: deliver to the customer's widget + show on the rep side.
+    await onReply(reply, { card_id: resolution.card_id });
     setEditing(false);
   };
 
@@ -84,6 +88,7 @@ export function DeskView({ state, onQuery }: Props) {
         <div className="callpanel-head">
           <div className="callpanel-head-row">
             <h2 className="label-caps">Conversation</h2>
+            <RoutingBadge routing={state.routing} />
           </div>
         </div>
 
@@ -108,7 +113,7 @@ export function DeskView({ state, onQuery }: Props) {
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && submit()}
-              placeholder="Type a message…"
+              placeholder="Type your reply to the customer…"
             />
             <motion.button
               className="composer-attach"
@@ -249,6 +254,56 @@ export function DeskView({ state, onQuery }: Props) {
         </div>
       </motion.section>
     </div>
+  );
+}
+
+// Routing badge — shows the classified department once the inbound classifier
+// reports it on session.status. Hidden until routing is present.
+const _DEPT_LABEL: Record<string, string> = {
+  support: "Customer Support",
+  sales: "Sales",
+  it: "IT",
+  // legacy values, just in case
+  desk: "Customer Support",
+  intake: "Sales",
+};
+
+export function RoutingBadge({
+  routing,
+}: {
+  routing: { department: string; label?: string; confidence?: number } | null;
+}) {
+  if (!routing) return null;
+  const label = routing.label ?? _DEPT_LABEL[routing.department] ?? routing.department;
+  return (
+    <motion.span
+      className="label-caps"
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: easeOut }}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "4px 10px",
+        borderRadius: 999,
+        background: "var(--surface-container)",
+        border: "1px solid var(--primary-container)",
+        color: "var(--primary)",
+        fontSize: 11,
+      }}
+      title={
+        routing.confidence != null
+          ? `Routed to ${label} · ${Math.round(routing.confidence * 100)}% confidence`
+          : `Routed to ${label}`
+      }
+    >
+      <Icon name="alt_route" size={14} fill />
+      {label}
+      {routing.confidence != null && (
+        <span style={{ opacity: 0.65 }}>{Math.round(routing.confidence * 100)}%</span>
+      )}
+    </motion.span>
   );
 }
 

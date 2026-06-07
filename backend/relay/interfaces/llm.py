@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -119,6 +120,18 @@ class LLMClient(ABC):
         """
         return _heuristic_extract_lead(transcript)
 
+    async def classify_intent(self, *, text: str) -> Literal["support", "sales", "it"]:
+        """Classify a customer message as ``"support"``, ``"sales"``, or ``"it"`` intent.
+
+        Used by the inbound triage router to route a customer message to the right
+        department: support (product help → Desk grounded answer), sales (buying signal →
+        Intake lead), or it (technical/infrastructure issue → IT, also answered from docs).
+        Default implementation: a lightweight keyword heuristic so triage degrades
+        gracefully without an LLM. Real adapters (TFY gateway) override this with a
+        fast-model classification. Ambiguous → ``"support"`` (always answer the question).
+        """
+        return _heuristic_classify_intent(text)
+
 
 # ---------------------------------------------------------------------------
 # Heuristic lead extraction (no-LLM fallback)
@@ -154,3 +167,41 @@ def _heuristic_extract_lead(transcript: str) -> "LeadExtraction":
         authority=authority.group(0) if authority else None,
         timeline=timeline.group(0) if timeline else None,
     )
+
+
+# ---------------------------------------------------------------------------
+# Heuristic intent classification (no-LLM fallback)
+# ---------------------------------------------------------------------------
+
+# Department routing keywords. Priority: sales → it → support (default). "support" is the
+# catch-all so we always answer a product question; "it" is reserved for clearly technical
+# /infrastructure issues; "sales" is buying-signal language.
+_SALES_RE = _re.compile(
+    r"\b(?:pricing|price|quote|cost|how much|buy|purchase|demo|trial|"
+    r"subscription|subscribe|plan|plans|upgrade|sales|interested in|"
+    r"sign up|sign-up|signup|talk to sales|contact sales|enterprise|"
+    r"discount|budget|procure|procurement|evaluat\w*)\b",
+    _re.IGNORECASE,
+)
+# IT / technical-infrastructure signals (outages, auth, network, errors). Deliberately
+# specific so ordinary product help ("how do I…", "my sync stopped") stays in support.
+_IT_RE = _re.compile(
+    r"\b(?:outage|server (?:down|error)|is down|are down|API (?:error|key|down)|"
+    r"5\d\d error|error code|can'?t log ?in|cannot log ?in|locked out|password reset|"
+    r"reset my password|2fa|mfa|sso|single sign[- ]on|vpn|firewall|network|dns|"
+    r"certificate|ssl|deploy(?:ment)?|database (?:down|error)|webhook (?:fail\w*|down)|"
+    r"security (?:issue|incident)|data breach|admin access|permission denied)\b",
+    _re.IGNORECASE,
+)
+
+
+def _heuristic_classify_intent(text: str) -> "Literal['support', 'sales', 'it']":
+    """Keyword heuristic. Priority: buying-signal → ``sales``; technical/infra → ``it``;
+    otherwise ``support`` (so an ordinary product question is always answered)."""
+    if not text:
+        return "support"
+    if _SALES_RE.search(text):
+        return "sales"
+    if _IT_RE.search(text):
+        return "it"
+    return "support"

@@ -38,6 +38,7 @@ from relay.schemas.account import (
 )
 from relay.schemas.cards import Card as CardSchema
 from relay.schemas.cards import SessionCardsResponse, card_to_schema, source_from_card_source
+from relay.schemas.inbound import InboundSessionResponse
 from relay.schemas.sessions import (
     CreateSessionRequest,
     CreateSessionResponse,
@@ -259,6 +260,51 @@ async def get_demo_session(
 
 
 @router.get(
+    "/inbound/session",
+    response_model=InboundSessionResponse,
+    summary="Get (or provision) the rep's view of the demo inbound thread",
+)
+async def get_inbound_session(
+    claims: Claims = Depends(current_claims),
+    db: AsyncSession = Depends(get_session),
+) -> InboundSessionResponse:
+    """Return the rep-side session the Desk/Intake panels watch for the demo inbound thread.
+
+    Analogous to ``GET /sessions/demo``: derives the DETERMINISTIC inbound session id from
+    the demo thread, ensures the Session row exists, and returns its WS url so the dashboard
+    streams customer messages, cards, and leads with no manual room selection. The thread id
+    is stamped onto ``livekit_room`` as ``"inbound:" + thread_id`` so it's recoverable.
+    """
+    from relay.gateway.ws import inbound_session_id, register_thread
+
+    thread_id = settings.inbound_demo_thread
+    session_id = inbound_session_id(thread_id)
+    register_thread(thread_id)  # cache the mapping for /sessions/{id}/reply
+    org_id = claims.org_id
+
+    existing = await db.get(Session, session_id)
+    if existing is None:
+        db.add(
+            Session(
+                id=session_id,
+                organization_id=org_id,
+                mode="desk",
+                livekit_room=f"inbound:{thread_id}",
+                status="active",
+                started_at=datetime.now(timezone.utc),
+            )
+        )
+        # commit handled by get_session
+
+    logger.info("session.inbound session_id=%s thread_id=%s org_id=%s", session_id, thread_id, org_id)
+    return InboundSessionResponse(
+        session_id=session_id,
+        ws_url=f"/ws/sessions/{session_id}",
+        thread_id=thread_id,
+    )
+
+
+@router.get(
     "/sessions/{session_id}",
     response_model=SessionInfo,
     summary="Get a single session",
@@ -379,17 +425,51 @@ async def send_reply(
     """Desk: dispatch the suggested (optionally edited) resolution to the customer.
 
     In the current implementation we log the intent and return ``{"status": "sent"}``.
-    A production build would deliver the message via the configured channel
-    (e.g. email, help-desk ticket) — mark with TODO when wiring.
+    For an **inbound thread** the reply is ALSO delivered to the customer widget: we
+    persist ``Utterance(speaker="agent")`` and push a ``message`` (role=agent) envelope to
+    the widget WS. A production build would also deliver via the configured channel
+    (e.g. email, help-desk ticket) — marked with TODO when wiring.
     """
-    await _get_session_or_404(session_id, db)
+    session = await _get_session_or_404(session_id, db)
+
+    # --- Inbound-thread delivery: route the rep reply back to the customer widget. ---
+    # Recover the thread id from the in-process map, falling back to the session row's
+    # ``livekit_room`` ("inbound:" + thread_id) so it survives a process restart.
+    from relay.gateway.ws import deliver_to_widget, thread_for_session
+
+    thread_id = thread_for_session(session_id)
+    if thread_id is None and session.livekit_room and session.livekit_room.startswith("inbound:"):
+        thread_id = session.livekit_room.split("inbound:", 1)[1]
+
+    if thread_id and body.text and body.text.strip():
+        text = body.text.strip()
+        # Persist the agent utterance so Transcripts + history stay consistent.
+        try:
+            db.add(
+                Utterance(
+                    id=new_id("utt"),
+                    session_id=session_id,
+                    organization_id=claims.org_id,
+                    speaker="agent",
+                    text=text,
+                )
+            )
+            await db.flush()
+        except Exception as exc:  # noqa: BLE001 — never block the reply on a write error
+            logger.warning("inbound reply utterance persist failed session_id=%s: %s", session_id, exc)
+        # Deliver to the customer widget (best-effort fan-out; never raises).
+        try:
+            await deliver_to_widget(thread_id, "agent", text)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("inbound reply widget delivery failed thread_id=%s: %s", thread_id, exc)
 
     # TODO: integrate with customer messaging channel (email / ticket API)
     logger.info(
-        "session.reply session_id=%s card_id=%s org_id=%s text_len=%d",
+        "session.reply session_id=%s card_id=%s org_id=%s text_len=%d inbound=%s",
         session_id,
         body.card_id,
         claims.org_id,
         len(body.text),
+        bool(thread_id),
     )
     return ReplyResponse(status="sent")

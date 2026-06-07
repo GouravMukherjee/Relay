@@ -156,6 +156,37 @@ class Settings(BaseSettings):
             "pause never stalls a card."
         ),
     )
+    livekit_tts_model: str = Field(
+        default="elevenlabs/eleven_turbo_v2_5:iP95p4xoKVk53GoZ742B",
+        description=(
+            "LiveKit Inference TTS model:voice the Live agent speaks with. Default is "
+            "ElevenLabs 'Chris' (natural, real American male) on eleven_turbo_v2_5 — far "
+            "more human than Deepgram Aura, and it works over the SIP phone number with no "
+            "extra key (same LiveKit Inference path). Billed against LiveKit credits. The "
+            "agent greets on connect + speaks grounded answers so the caller never hears "
+            "dead silence. (Minimax is NOT available via LiveKit Inference — it would need "
+            "a custom plugin, so it's intentionally not used here.)"
+        ),
+    )
+    livekit_tts_fallback_model: str = Field(
+        default="deepgram/aura-2:athena",
+        description=(
+            "Fallback TTS model:voice if livekit_tts_model is rejected (e.g. the voice id "
+            "isn't enabled on the project). Deepgram Aura is always available on LiveKit "
+            "Inference, so it's a safe fallback."
+        ),
+    )
+    agent_greeting: str = Field(
+        default=(
+            "Hi, thanks for calling Northwind support! This is your AI assistant — "
+            "how can I help you today?"
+        ),
+        description=(
+            "What the Live voice agent SPEAKS the moment a caller connects (so the line "
+            "is never dead air). Reactive, grounded answers follow as the caller talks. "
+            "Set empty to disable the proactive greeting."
+        ),
+    )
 
     # ------------------------------------------------------------------
     # Unsiloed (document parsing)
@@ -199,13 +230,14 @@ class Settings(BaseSettings):
         ),
     )
     tfy_fast_model: str = Field(
-        default="anthropic/claude-haiku",
+        default="haiku/claude-haiku-4-5",
         description=(
             "Fast, low-latency model used ONLY for live card synthesis (cards are 1–2 "
             "sentences, so a small model is both faster and cheaper). Everything else "
             "stays on tfy_model. If the fast model fails, synthesis falls back to "
-            "tfy_model and the configured fallbacks. "
-            "# TODO: confirm <TrueFoundry> API — exact Haiku gateway id."
+            "tfy_model and the configured fallbacks. NOTE: this TFY account exposes Haiku "
+            "under the 'haiku/' provider prefix (verified via the gateway /models list), "
+            "not 'anthropic/' — confirm against /models if you switch accounts."
         ),
     )
     card_max_tokens: int = Field(
@@ -258,6 +290,27 @@ class Settings(BaseSettings):
     slack_webhook_url: str = Field(
         default="",
         description="Incoming webhook URL for Slack lead-routing notifications.",
+    )
+
+    # ------------------------------------------------------------------
+    # Inbound channel (Northwind customer-facing chat widget)
+    # ------------------------------------------------------------------
+    inbound_org_id: str = Field(
+        default="",
+        description=(
+            "Organisation the PUBLIC inbound widget targets (the Northwind tenant). The "
+            "widget is unauthenticated, so the org can't come from a JWT — it's fixed "
+            "here. Falls back to default_org_id when empty. Set this to the org that holds "
+            "the demo's docs + customer so Desk can ground answers and match the customer."
+        ),
+    )
+    inbound_demo_thread: str = Field(
+        default="northwind-support",
+        description=(
+            "Stable id for the demo inbound thread. The customer widget and the rep's "
+            "Desk/Intake both bind to the session derived from this thread, so messages "
+            "and replies round-trip without manual wiring (mirrors the demo-room pattern)."
+        ),
     )
 
     # ------------------------------------------------------------------

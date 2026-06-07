@@ -1,13 +1,17 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { api } from "../api/client";
 import { useResource } from "../hooks/useResource";
 import { Icon } from "../components/Icon";
 import { fadeUp, hoverCard, inView, item, staggerParent } from "../motion";
+import type { SessionInfo } from "../types";
+import { TranscriptDetail, sessionLabel } from "./TranscriptDetail";
 
 const MODE_ICON: Record<string, string> = { live: "graphic_eq", desk: "support_agent", intake: "person_search" };
 
 export function TranscriptsView() {
   const { data, loading, error } = useResource(() => api.listSessions().then((r) => r.sessions));
+  const [active, setActive] = useState<SessionInfo | null>(null);
 
   return (
     <div className="section-page">
@@ -31,7 +35,14 @@ export function TranscriptsView() {
           viewport={inView}
         >
           {data.map((s) => (
-            <motion.button className="card-surface session-card" key={s.session_id} variants={item} {...hoverCard}>
+            <motion.button
+              className="card-surface session-card"
+              key={s.session_id}
+              variants={item}
+              onClick={() => setActive(s)}
+              aria-label={`Open ${sessionLabel(s)}`}
+              {...hoverCard}
+            >
               <div className="session-card-top">
                 <span className={`mode-chip ${s.mode}`}>
                   <Icon name={MODE_ICON[s.mode] ?? "graphic_eq"} size={16} />
@@ -39,17 +50,19 @@ export function TranscriptsView() {
                 </span>
                 <span className={`status-dot ${s.status === "ended" ? "ready" : "processing"}`} />
               </div>
-              <div className="session-id mono">{s.session_id}</div>
+              <div className="session-id">{sessionLabel(s)}</div>
               <div className="session-meta">
                 <span>
                   <b>{s.card_count}</b> cards
                 </span>
-                <span className="mono">{new Date(s.started_at).toLocaleString()}</span>
+                <span className="mono">{s.session_id}</span>
               </div>
             </motion.button>
           ))}
         </motion.div>
       )}
+
+      <TranscriptDetail session={active} onClose={() => setActive(null)} />
     </div>
   );
 }

@@ -115,6 +115,9 @@ export type ServerEvent =
         call_active?: boolean;
         call_kind?: string;
         caller?: string;
+        // Inbound channel (additive): classified department for the routing badge.
+        // department is the intent key (support | sales | it); label is the human name.
+        routing?: { department: string; label?: string; confidence?: number };
       };
     }
   | { type: "lead.update"; ts: string; data: Lead } // Intake (not in base spec; additive)

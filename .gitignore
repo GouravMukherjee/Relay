@@ -30,3 +30,10 @@ node_modules/
 
 # TS build cache
 *.tsbuildinfo
+
+# Runtime logs (contain short-lived JWT tokens in connection URLs — never commit)
+.logs/
+*.log
+
+# Local one-off verification scripts (machine-specific org ids)
+backend/scripts/verify_*.py

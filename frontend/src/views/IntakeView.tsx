@@ -8,6 +8,7 @@ import { Icon } from "../components/Icon";
 import { CallTimer } from "../components/CallTimer";
 import { clock, initials } from "../util";
 import { fadeUp, inView, item, pressable, staggerParent } from "../motion";
+import { RoutingBadge } from "./DeskView";
 
 interface Props {
   state: RelaySessionState;
@@ -59,9 +60,12 @@ export function IntakeView({ state, onRoute, onQuery }: Props) {
               <span className="live-dot" />
               Inbound Call
             </h2>
-            <span className="mono call-timer">
-              <CallTimer startedAt={state.startedAt} />
-            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <RoutingBadge routing={state.routing} />
+              <span className="mono call-timer">
+                <CallTimer startedAt={state.startedAt} />
+              </span>
+            </div>
           </div>
           <Waveform active={!!state.partial} />
         </div>
@@ -138,11 +142,13 @@ export function IntakeView({ state, onRoute, onQuery }: Props) {
                   Lead
                 </div>
                 <div className="lead-head">
-                  <div className="lead-avatar">{initials(lead.name)}</div>
+                  <div className="lead-avatar">
+                    {isUnknownLead(lead.name) ? <Icon name="person" size={20} /> : initials(lead.name)}
+                  </div>
                   <div className="lead-id">
                     <h3>{lead.name}</h3>
                     <div className="sub">
-                      {lead.company} · {lead.email}
+                      {[lead.company, lead.email].filter(Boolean).join(" · ") || "Details pending…"}
                     </div>
                   </div>
                   <div className="score-wrap">
@@ -216,3 +222,7 @@ export function IntakeView({ state, onRoute, onQuery }: Props) {
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+// The inbound lead starts as "Unknown caller" before a name is extracted — render
+// the avatar as a neutral person icon (no two-letter glitch) until the real name lands.
+const isUnknownLead = (name: string) => !name.trim() || /^unknown/i.test(name.trim());

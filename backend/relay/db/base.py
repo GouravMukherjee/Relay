@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from relay.config import settings
 
@@ -71,12 +72,40 @@ def _engine_connect_args(url: str) -> dict:
     return args
 
 
-engine = create_async_engine(
-    settings.database_url,
-    pool_pre_ping=True,
-    future=True,
-    connect_args=_engine_connect_args(settings.database_url),
-)
+# Connection pooling is process-dependent:
+#
+# - The AGENT worker runs each LiveKit job in its OWN event loop, and an asyncpg
+#   connection is bound to the loop that created it — a pooled connection reused from a
+#   previous job's loop raises asyncpg "got result for unknown protocol state" / panics on
+#   teardown. There it MUST use NullPool (fresh connection per session, closed on exit) so
+#   connections never leak across loops. The agent process opts in via RELAY_DB_NULLPOOL=1.
+#
+# - The GATEWAY runs in a single, long-lived uvicorn event loop, so pooling is both safe
+#   and important: NullPool there means every request pays a fresh TLS handshake to the
+#   remote Supabase pooler (hundreds of ms each), which crushes latency under the inbound
+#   pipeline's many DB ops. The gateway uses a normal pre-pinged pool.
+import os as _os
+
+_use_nullpool = bool(_os.getenv("RELAY_DB_NULLPOOL"))
+_is_postgres = settings.database_url.lower().startswith("postgresql")
+_engine_kwargs: dict = {
+    "future": True,
+    "connect_args": _engine_connect_args(settings.database_url),
+}
+if _use_nullpool:
+    _engine_kwargs["poolclass"] = NullPool
+elif _is_postgres:
+    # QueuePool tuning is Postgres-only — SQLite (tests) uses StaticPool and rejects
+    # pool_size/max_overflow. NOTE: pool_pre_ping is intentionally OFF — the DB is a
+    # REMOTE Supabase pooler (US-East), so a SELECT-1 pre-ping adds a full network
+    # round-trip (~0.5–1s) to EVERY session checkout. The inbound pipeline opens several
+    # sessions per message, so that tax stacked into multi-second stalls. pool_recycle
+    # keeps connections fresh instead.
+    _engine_kwargs["pool_size"] = 10
+    _engine_kwargs["max_overflow"] = 20
+    _engine_kwargs["pool_recycle"] = 1800     # recycle before Supabase's idle timeout
+
+engine = create_async_engine(settings.database_url, **_engine_kwargs)
 
 async_session_maker: async_sessionmaker[AsyncSession] = async_sessionmaker(
     bind=engine,

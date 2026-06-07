@@ -20,6 +20,14 @@ import type {
   Utterance,
 } from "../types";
 
+// Classified department for the inbound routing badge.
+// department is the intent key (support | sales | it); label is the human name.
+export interface Routing {
+  department: string;
+  label?: string;
+  confidence?: number;
+}
+
 export interface PartialLine {
   speaker: string;
   text: string;
@@ -49,6 +57,8 @@ export interface RelaySessionState {
   // Inbound-call indicator: true while a SIP caller is on the line.
   callActive: boolean;
   callKind: string | null; // "sip" | "browser" | null
+  // Inbound channel (Desk/Intake): classified department for the routing badge.
+  routing: Routing | null;
 }
 
 export type LiveSource = "phone" | "mic";
@@ -72,7 +82,13 @@ export function useRelaySession(initialMode: Mode) {
     liveSource: "phone",
     callActive: false,
     callKind: null,
+    routing: null,
   });
+
+  // Mirror state into a ref so stable callbacks (replyToCustomer) can read the latest
+  // sessionId without being re-created on every state change.
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const transportRef = useRef<RelayTransport | null>(null);
   // LiveKit room: publishes the mic so the agent worker transcribes live audio.
@@ -103,6 +119,8 @@ export function useRelaySession(initialMode: Mode) {
             backend: e.data.retrieval_backend ?? s.backend,
             callActive,
             callKind,
+            // Inbound routing badge: capture the classified department when present.
+            routing: e.data.routing ?? s.routing,
             startedAt: justConnected ? Date.now() : s.startedAt,
           };
         }
@@ -148,6 +166,11 @@ export function useRelaySession(initialMode: Mode) {
     modeRef.current = state.mode;
   }, [state.mode]);
 
+  // Session IDENTITY: which backend session this hook is bound to. Desk + Intake both
+  // watch the shared inbound session, so they collapse to the same key — switching
+  // between those tabs does NOT re-create the session or wipe state.
+  const sessionKey = state.mode === "live" ? `live:${liveSource}` : "inbound";
+
   // Establish session + transport on mount, and again whenever restartKey bumps
   // (the "New Session" button). A restart clears transcript/cards/timer in place —
   // single-page, no reload, no new tab.
@@ -170,6 +193,7 @@ export function useRelaySession(initialMode: Mode) {
       startedAt: null,
       callActive: false,
       callKind: null,
+      routing: null,
     }));
 
     async function start() {
@@ -178,11 +202,16 @@ export function useRelaySession(initialMode: Mode) {
       let micEnabled = false;
       let micAvailable = false;
 
-      // In Live mode the default source is the inbound-phone demo room: WATCH it (the
-      // agent streams cards for the SIP caller) without publishing the browser mic.
-      // Any other case (Desk/Intake, or Live with the "mic" fallback) creates a normal
-      // session and — for mic — joins the room and publishes audio.
-      const watchPhone = modeRef.current === "live" && liveSourceRef.current === "phone";
+      // Live mode WATCHES the inbound-phone room: the named agent transcribes the SIP
+      // caller and streams spoken answers + cards. The browser-mic option was removed —
+      // Live is phone-only now.
+      const watchPhone = modeRef.current === "live";
+      // In Desk/Intake, WATCH the shared inbound session instead of creating a fresh
+      // per-mode session, so customer messages (transcript.final speaker="customer"),
+      // card.new/card.update, and lead.update from the inbound channel stream straight
+      // into the panels. Switching between desk/intake re-points the WS via the effect
+      // re-run (it keys off state.mode). Live phone/mic behavior is untouched.
+      const watchInbound = modeRef.current === "desk" || modeRef.current === "intake";
 
       try {
         let wsPath: string;
@@ -193,6 +222,11 @@ export function useRelaySession(initialMode: Mode) {
           sessionId = demo.session_id;
           wsPath = demo.ws_url;
           livekitToken = undefined; // watch-only: do not publish mic on the phone path
+        } else if (watchInbound) {
+          const inbound = await api.getInboundSession();
+          sessionId = inbound.session_id;
+          wsPath = inbound.ws_url;
+          livekitToken = undefined; // watch-only: the inbound channel is text, no mic
         } else {
           const res = await api.createSession(modeRef.current);
           sessionId = res.session_id;
@@ -263,13 +297,21 @@ export function useRelaySession(initialMode: Mode) {
       void roomRef.current?.disconnect();
       roomRef.current = null;
     };
+    // Key on the SESSION IDENTITY, not the raw mode: Desk and Intake watch the SAME
+    // inbound session, so switching between them must NOT tear down the WS or clear the
+    // conversation/cards/lead. Only a genuine session change (live-phone ↔ live-mic ↔
+    // inbound) or a restart re-runs this effect. (`sessionKey` is computed in render.)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restartKey, liveSource]);
+  }, [restartKey, sessionKey]);
 
   // ── Actions ──────────────────────────────────────────────────────────────────
 
   const setMode = useCallback((mode: Mode) => {
-    setState((s) => ({ ...s, mode, utterances: [], cards: [], partial: null, lead: null }));
+    // Don't clear the conversation/cards/lead here: when staying within the shared
+    // inbound session (desk↔intake) the data must persist, and when the session truly
+    // changes (to/from live) the session effect resets state on reconnect. Just set the
+    // mode and tell the backend.
+    setState((s) => ({ ...s, mode }));
     transportRef.current?.send({ type: "mode.set", data: { mode } });
   }, []);
 
@@ -305,6 +347,38 @@ export function useRelaySession(initialMode: Mode) {
       return { ...s, lead: { ...s.lead, routed_to: "#sales" } };
     });
   }, []);
+
+  // Send a reply to the CUSTOMER (Desk). Delivers to the customer's widget via the
+  // backend AND optimistically appends it to the rep's own conversation as an "agent"
+  // bubble, so the rep's typed reply stays visible (it isn't a query — it doesn't
+  // generate a card or get cleared). Returns a promise so callers can await delivery.
+  const replyToCustomer = useCallback(
+    async (text: string, opts?: { card_id?: string }) => {
+      const t = text.trim();
+      const sid = stateRef.current.sessionId;
+      if (!t || !sid) return;
+      // Optimistic echo on the rep side.
+      setState((s) => ({
+        ...s,
+        utterances: [
+          ...s.utterances,
+          {
+            utterance_id: `local_${Date.now()}`,
+            session_id: sid,
+            speaker: "agent",
+            text: t,
+            ts: new Date().toISOString(),
+          },
+        ],
+      }));
+      try {
+        await api.sendReply(sid, { text: t, ...(opts?.card_id ? { card_id: opts.card_id } : {}) });
+      } catch (e) {
+        console.warn("Relay: send reply failed —", e);
+      }
+    },
+    [],
+  );
 
   // Mute / un-mute the EXISTING mic track. setMicrophoneEnabled() toggles the
   // published track's mute state — it does NOT unpublish or stop it — so the
@@ -346,5 +420,6 @@ export function useRelaySession(initialMode: Mode) {
     toggleMic,
     restart,
     setLiveSource,
+    replyToCustomer,
   };
 }

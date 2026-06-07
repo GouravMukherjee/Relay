@@ -30,6 +30,7 @@ from relay.interfaces.llm import (
     CardStreamEvent,
     LeadExtraction,
     LLMClient,
+    _heuristic_classify_intent,
     _heuristic_extract_lead,
 )
 from relay.interfaces.retrieval import RetrievedChunk
@@ -48,6 +49,13 @@ _MODEL_IDS: dict[str, str] = {
 
 # Maximum answer length in characters (kept short for voice/card display).
 _MAX_ANSWER_CHARS = 320
+# Desk replies are customer-ready messages (a few sentences) — allow more room.
+_DESK_MAX_ANSWER_CHARS = 800
+
+
+def _max_chars_for(mode: str) -> int:
+    """Display-answer char cap for *mode* (Desk replies run longer than live cards)."""
+    return _DESK_MAX_ANSWER_CHARS if mode == "desk" else _MAX_ANSWER_CHARS
 
 _SYSTEM_PROMPT = """\
 You are Relay, a live co-pilot. Answer the question in ONE or at most TWO short
@@ -64,6 +72,39 @@ no "according to the document". These rules are absolute:
    and nothing else.
 5. Never speculate, fabricate, or fill gaps from general knowledge.
 """.replace("__NO_CARD__", _NO_CARD_SENTINEL)
+
+
+# Desk mode produces a polished, customer-READY reply: first person, addressed directly to
+# the customer, warm and empathetic — but STILL strictly grounded in (and cited from) the
+# provided excerpts. The rep sends this near-verbatim, so it must read as a finished message,
+# not a terse co-pilot hint. Grounding + citation rules are identical and absolute.
+_DESK_SYSTEM_PROMPT = """\
+You are a friendly customer-support agent writing a reply the customer will read directly.
+Write in the FIRST PERSON, addressed to the customer ("you"), warm and empathetic — a
+polished, ready-to-send message of 2–4 short sentences. Acknowledge their concern briefly,
+then give the answer. These rules are absolute:
+
+1. Answer ONLY from the excerpts below. Never use outside knowledge.
+2. Write a complete, customer-ready reply (greeting optional; no "according to the
+   document", no internal notes). Be specific and reassuring, never robotic.
+3. End your response with a fenced ```json block listing the chunk IDs you cited:
+   ```json
+   {"cited_chunks": ["chk_abc123"]}
+   ```
+4. If the excerpts contain no relevant answer, respond with exactly: __NO_CARD__
+   and nothing else.
+5. Never speculate, fabricate, promise, or fill gaps from general knowledge.
+""".replace("__NO_CARD__", _NO_CARD_SENTINEL)
+
+
+def _system_prompt_for(mode: str) -> str:
+    """Pick the card system prompt for *mode*.
+
+    ``desk`` → the customer-ready, empathetic first-person prompt (the suggested reply the
+    rep sends to the customer). ``live``/``intake`` → the terse co-pilot prompt (a glanceable
+    hint for the operator). Both enforce the identical grounding + citation contract.
+    """
+    return _DESK_SYSTEM_PROMPT if mode == "desk" else _SYSTEM_PROMPT
 
 
 def _clean(value: Any) -> str | None:
@@ -127,8 +168,12 @@ def _build_user_message(
     return "\n".join(lines)
 
 
-def _parse_response(raw: str) -> CardDraft | None:
-    """Extract answer and cited chunk IDs from the model's raw text."""
+def _parse_response(raw: str, max_chars: int = _MAX_ANSWER_CHARS) -> CardDraft | None:
+    """Extract answer and cited chunk IDs from the model's raw text.
+
+    ``max_chars`` caps the display answer; Desk replies are customer-ready paragraphs so
+    the caller passes a larger budget than the terse live-card default.
+    """
     raw = raw.strip()
 
     # Sentinel check — model declines to ground an answer.
@@ -153,8 +198,8 @@ def _parse_response(raw: str) -> CardDraft | None:
         return None
 
     # Truncate to max display length.
-    if len(answer) > _MAX_ANSWER_CHARS:
-        answer = answer[:_MAX_ANSWER_CHARS].rstrip() + "…"
+    if len(answer) > max_chars:
+        answer = answer[:max_chars].rstrip() + "…"
 
     return CardDraft(answer=answer, title=None, used_chunk_ids=cited_ids)
 
@@ -256,7 +301,7 @@ class TfyLLMClient(LLMClient):
         last_exc: Exception | None = None
         for model in models:
             try:
-                return await self._synthesize_openai_compat(user_message, model)
+                return await self._synthesize_openai_compat(user_message, model, mode=mode)
             except Exception as exc:  # noqa: BLE001 — try the next model on any failure
                 last_exc = exc
                 logger.warning("llm model failed; trying fallback", extra={"model": model, "error": str(exc)})
@@ -264,7 +309,7 @@ class TfyLLMClient(LLMClient):
         # All TFY paths failed — try direct Anthropic SDK if available (handles billing errors).
         if self._anthropic_client is not None:
             try:
-                return await self._synthesize_anthropic_direct(user_message)
+                return await self._synthesize_anthropic_direct(user_message, mode=mode)
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
                 logger.warning("anthropic direct fallback failed", extra={"error": str(exc)})
@@ -272,7 +317,7 @@ class TfyLLMClient(LLMClient):
         # Last resort: Qwen DashScope (always available on free tier).
         if self._qwen_http_client is not None:
             try:
-                return await self._synthesize_openai_compat(user_message, "qwen-plus", client=self._qwen_http_client)
+                return await self._synthesize_openai_compat(user_message, "qwen-plus", client=self._qwen_http_client, mode=mode)
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
                 logger.warning("qwen fallback failed", extra={"error": str(exc)})
@@ -306,7 +351,7 @@ class TfyLLMClient(LLMClient):
 
         user_message = _build_user_message(query, chunks, mode, window)
         try:
-            async for ev in self._stream_openai_compat(user_message, self._fast_model_id):
+            async for ev in self._stream_openai_compat(user_message, self._fast_model_id, mode):
                 yield ev
             return
         except Exception as exc:  # noqa: BLE001 — fall back to non-streaming synthesis
@@ -323,16 +368,20 @@ class TfyLLMClient(LLMClient):
         yield CardStreamEvent(done=True, draft=draft)
 
     async def _stream_openai_compat(
-        self, user_message: str, model: str
+        self, user_message: str, model: str, mode: str = "live"
     ) -> AsyncIterator[CardStreamEvent]:
-        """Stream one /chat/completions call (SSE), emitting clean display deltas."""
+        """Stream one /chat/completions call (SSE), emitting clean display deltas.
+
+        ``mode`` selects the system prompt (Desk = customer-ready) and the token/char
+        budget (Desk answers run longer than terse live cards).
+        """
         payload: dict[str, Any] = {
             "model": model,
             "messages": [
-                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "system", "content": _system_prompt_for(mode)},
                 {"role": "user", "content": user_message},
             ],
-            "max_tokens": self._card_max_tokens,
+            "max_tokens": self._max_tokens_for(mode),
             "temperature": 0.0,
             "stream": True,
         }
@@ -379,7 +428,7 @@ class TfyLLMClient(LLMClient):
                     shown = display
                     yield CardStreamEvent(delta=new_text)
 
-        draft = _parse_response(raw)
+        draft = _parse_response(raw, _max_chars_for(mode))
         logger.debug("llm_stream_ok", extra={"model": model})
         yield CardStreamEvent(done=True, draft=draft)
 
@@ -419,6 +468,60 @@ class TfyLLMClient(LLMClient):
         except Exception as exc:  # noqa: BLE001 — degrade to heuristic
             logger.warning("lead extraction failed; using heuristic", extra={"error": str(exc)})
             return _heuristic_extract_lead(transcript)
+
+    async def classify_intent(self, *, text: str) -> str:
+        """Classify a customer message as ``"support"``, ``"sales"``, or ``"it"`` via the
+        fast model.
+
+        Falls back to the keyword heuristic on any LLM/parse failure so inbound triage
+        always routes. Ambiguous / unparseable → ``"support"`` (answer the question),
+        matching the contract's default-support rule.
+        """
+        text = (text or "").strip()
+        if not text:
+            return "support"
+
+        system = (
+            "You are an intent router for an inbound customer message. Classify it as "
+            "exactly one of three departments and respond with ONLY that single lowercase "
+            "word, nothing else:\n"
+            "- 'sales' — buying intent: pricing, quotes, demos, trials, plans, purchasing, "
+            "upgrading, talking to sales.\n"
+            "- 'it' — a technical or infrastructure problem: outages, the service is down, "
+            "API/server errors, login/SSO/password/access issues, network, security "
+            "incidents, integrations failing at a system level.\n"
+            "- 'support' — general product help: how-to questions, account/billing, a "
+            "feature not behaving, or anything that doesn't clearly fit the other two.\n"
+            "If unsure, answer 'support'."
+        )
+        user = f"Message:\n{text}\n\nDepartment:"
+        try:
+            payload: dict[str, Any] = {
+                "model": self._fast_model_id,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                "max_tokens": 4,
+                "temperature": 0.0,
+            }
+            response = await self._http_client.post("/chat/completions", json=payload)
+            response.raise_for_status()
+            content: str = (
+                response.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+            )
+            answer = content.strip().lower()
+            if "sales" in answer:
+                return "sales"
+            if "it" == answer or answer.startswith("it") or "i.t" in answer:
+                return "it"
+            if "support" in answer:
+                return "support"
+            # Unrecognised output — fall back to the heuristic rather than guessing.
+            return _heuristic_classify_intent(text)
+        except Exception as exc:  # noqa: BLE001 — degrade to heuristic
+            logger.warning("intent classify failed; using heuristic", extra={"error": str(exc)})
+            return _heuristic_classify_intent(text)
 
     async def _extract_json(self, system: str, user: str, model: str) -> dict[str, Any]:
         """Call the gateway for a JSON object and parse it (tolerant of fences)."""
@@ -482,21 +585,31 @@ class TfyLLMClient(LLMClient):
                 ordered.append(m)
         return ordered
 
+    def _max_tokens_for(self, mode: str) -> int:
+        """Completion token budget for *mode* (Desk replies need more than live cards)."""
+        if mode == "desk":
+            return max(self._card_max_tokens, 400)
+        return self._card_max_tokens
+
     async def _synthesize_openai_compat(
         self,
         user_message: str,
         model: str,
         client: httpx.AsyncClient | None = None,
+        mode: str = "live",
     ) -> CardDraft | None:
-        """Call *model* via an OpenAI-compatible /chat/completions endpoint."""
+        """Call *model* via an OpenAI-compatible /chat/completions endpoint.
+
+        ``mode`` selects the system prompt + token/char budget (Desk = customer-ready).
+        """
         http = client or self._http_client
         payload: dict[str, Any] = {
             "model": model,
             "messages": [
-                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "system", "content": _system_prompt_for(mode)},
                 {"role": "user", "content": user_message},
             ],
-            "max_tokens": self._card_max_tokens,
+            "max_tokens": self._max_tokens_for(mode),
             "temperature": 0.0,
         }
 
@@ -510,9 +623,11 @@ class TfyLLMClient(LLMClient):
             .get("content", "")
         )
         logger.debug("llm_ok", extra={"model": model})
-        return _parse_response(raw_text)
+        return _parse_response(raw_text, _max_chars_for(mode))
 
-    async def _synthesize_anthropic_direct(self, user_message: str) -> CardDraft | None:
+    async def _synthesize_anthropic_direct(
+        self, user_message: str, mode: str = "live"
+    ) -> CardDraft | None:
         """Call the Anthropic API directly (fallback when TFY billing fails)."""
         # Anthropic's model ID doesn't use the provider prefix. This is the
         # billing-failure fallback (not the latency path), so use the known-good
@@ -520,13 +635,13 @@ class TfyLLMClient(LLMClient):
         model = self._model_id.replace("anthropic/", "")
         msg = await self._anthropic_client.messages.create(
             model=model,
-            max_tokens=self._card_max_tokens,
-            system=_SYSTEM_PROMPT,
+            max_tokens=self._max_tokens_for(mode),
+            system=_system_prompt_for(mode),
             messages=[{"role": "user", "content": user_message}],
         )
         raw_text: str = msg.content[0].text if msg.content else ""
         logger.debug("anthropic_direct_ok", extra={"model": model})
-        return _parse_response(raw_text)
+        return _parse_response(raw_text, _max_chars_for(mode))
 
     async def aclose(self) -> None:
         """Close underlying HTTP clients. Call on application shutdown."""

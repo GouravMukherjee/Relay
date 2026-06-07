@@ -11,6 +11,16 @@ const TARGET = /^https?:\/\//i.test(GATEWAY) ? GATEWAY : `http://${GATEWAY}`;
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      // Multi-page: the rep console (index.html) + the standalone Northwind
+      // customer support site (northwind.html → /src/northwind/main.tsx).
+      input: {
+        main: "index.html",
+        northwind: "northwind.html",
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {

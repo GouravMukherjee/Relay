@@ -64,6 +64,7 @@ _ROUTE_MODULES: tuple[str, ...] = (
     "relay.gateway.routes.leads",
     "relay.gateway.routes.customers",
     "relay.gateway.routes.account",
+    "relay.gateway.routes.inbound",
 )
 
 # Rate-limit configuration (requests per window, in seconds). In-process buckets — adequate
@@ -264,17 +265,43 @@ def _build_lifespan():
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        from relay.gateway.ws import hub
+        from relay.gateway.ws import hub, inbound_hub
 
         try:
             await hub.start_redis()
         except Exception as exc:  # noqa: BLE001 — degrade to local-only hub
             logger.warning("ws hub redis disabled", extra={"error": str(exc)})
         try:
+            await inbound_hub.start_redis()
+        except Exception as exc:  # noqa: BLE001 — degrade to local-only widget hub
+            logger.warning("inbound ws hub redis disabled", extra={"error": str(exc)})
+        # Prewarm the DB connection pool: open a handful of connections up front so the
+        # remote Supabase TLS handshakes (~2s each, one-time per connection) happen at
+        # startup — not mid-conversation where they'd hitch the inbound pipeline.
+        try:
+            import asyncio as _asyncio
+
+            from sqlalchemy import text as _text
+
+            from relay.db.base import async_session_maker
+
+            async def _warm_one() -> None:
+                async with async_session_maker() as s:
+                    await s.execute(_text("SELECT 1"))
+
+            await _asyncio.gather(*[_warm_one() for _ in range(5)], return_exceptions=True)
+            logger.info("db pool prewarmed")
+        except Exception as exc:  # noqa: BLE001 — best-effort
+            logger.warning("db pool prewarm skipped", extra={"error": str(exc)})
+        try:
             yield
         finally:
             try:
                 await hub.stop_redis()
+            except Exception:  # pragma: no cover
+                pass
+            try:
+                await inbound_hub.stop_redis()
             except Exception:  # pragma: no cover
                 pass
 

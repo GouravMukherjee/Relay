@@ -107,7 +107,10 @@ async def extract_and_store(
             db.add(lead)
         else:
             # Fill identity only when newly discovered; never overwrite with a placeholder.
-            if extraction.name:
+            # The name updates LIVE: a later turn that finally surfaces the caller's name
+            # replaces the "Unknown caller" placeholder (or any earlier value), so the rep's
+            # lead card flips from "Unknown caller" to the real name the instant it appears.
+            if extraction.name and extraction.name != lead.name:
                 lead.name = extraction.name
             if extraction.company:
                 lead.company = extraction.company

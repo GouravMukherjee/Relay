@@ -115,6 +115,12 @@ export const api = {
       "/sessions/demo",
     ),
 
+  // Inbound channel (Desk/Intake): the rep's view of the demo inbound thread.
+  // Returns the deterministic session id + ws_url to watch so customer messages,
+  // cards, and leads stream into the dashboard with no manual room selection.
+  getInboundSession: () =>
+    req<{ session_id: string; ws_url: string; thread_id: string }>("/inbound/session"),
+
   getSession: (id: string) => req<SessionInfo>(`/sessions/${id}`),
 
   endSession: (id: string) =>

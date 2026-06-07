@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -56,6 +57,15 @@ from relay.ids import new_id, stable_session_id
 from relay.schemas.common import build_event
 
 logger = logging.getLogger(__name__)
+
+# Sentence-initial interrogative words — used to make sure a closing detector never
+# swallows a real question ("what's the price, thanks" still leads with "what").
+_INTERROGATIVE_LEAD_RE = re.compile(
+    r"^\s*(?:who|what|whats|what'?s|when|where|why|how|which|whose|whom|can|could|would|"
+    r"will|should|shall|do|does|did|is|are|was|were|have|has|had|may|might|tell me|"
+    r"i (?:have|had|need|want|wanted)|could you|can you|do you)\b",
+    re.IGNORECASE,
+)
 
 # ---------------------------------------------------------------------------
 # Lazy imports — only resolved at call time to avoid circular imports and to
@@ -171,16 +181,52 @@ def _endpointing_turn_handling() -> Any | None:
 
 
 def _build_agent_session(stt_model: str | None) -> Any:
-    """Construct the AgentSession with tuned endpointing, degrading gracefully.
+    """Construct the AgentSession with tuned endpointing + TTS, degrading gracefully.
 
-    Tries (STT + turn_handling) -> (STT only) -> (no STT) so the worker always starts.
+    Two independent fallback ladders are composed here:
+
+    - STT/endpointing: (STT + turn_handling) -> (STT only) -> (no STT).
+    - TTS: each successful branch is first attempted *with* TTS so the Live agent
+      has a voice. TTS itself has its own ladder — primary model
+      (``settings.livekit_tts_model``) -> fallback model
+      (``settings.livekit_tts_fallback_model``) -> no TTS (current behaviour).
+
+    The worker always starts: a bad TTS model never blocks STT, and a bad STT
+    model never blocks startup.
     """
     turn_handling = _endpointing_turn_handling()
+
+    def _build(**kwargs: Any) -> Any:
+        """Try AgentSession(**kwargs, tts=primary) -> (tts=fallback) -> (no tts).
+
+        Returns the session on the first success, logging which TTS (if any) is
+        active. Re-raises only if even the no-TTS construction fails, so the
+        caller's STT ladder can degrade further.
+        """
+        primary = settings.livekit_tts_model
+        fallback = settings.livekit_tts_fallback_model
+        for tts_model in (primary, fallback):
+            if not tts_model:
+                continue
+            try:
+                session = AgentSession(tts=tts_model, **kwargs)  # type: ignore[attr-defined]
+                logger.info("agent: TTS enabled", extra={"tts_model": tts_model})
+                return session
+            except Exception as exc:  # noqa: BLE001 — version/model may reject tts
+                logger.warning(
+                    "agent: AgentSession with tts=%r failed: %s — trying next TTS option",
+                    tts_model,
+                    exc,
+                )
+        # No TTS — caller never hears a voice, but transcription still works.
+        session = AgentSession(**kwargs)  # type: ignore[attr-defined]
+        logger.info("agent: TTS disabled (no working TTS model)")
+        return session
 
     # 1) Preferred: STT + tightened endpointing.
     if stt_model and turn_handling is not None:
         try:
-            session = AgentSession(stt=stt_model, turn_handling=turn_handling)  # type: ignore[attr-defined]
+            session = _build(stt=stt_model, turn_handling=turn_handling)
             logger.info(
                 "agent: STT + endpointing enabled",
                 extra={
@@ -196,7 +242,7 @@ def _build_agent_session(stt_model: str | None) -> Any:
     # 2) STT only.
     if stt_model:
         try:
-            session = AgentSession(stt=stt_model)  # type: ignore[attr-defined]
+            session = _build(stt=stt_model)
             logger.info("agent: STT enabled (default endpointing)", extra={"model": stt_model})
             return session
         except Exception as exc:  # noqa: BLE001
@@ -208,7 +254,7 @@ def _build_agent_session(stt_model: str | None) -> Any:
 
     # 3) No STT (still runs; manual queries work).
     logger.info("agent: STT disabled")
-    return AgentSession()  # type: ignore[attr-defined]
+    return _build()
 
 
 def _parse_room_metadata(metadata: str | None) -> dict[str, str]:
@@ -267,6 +313,15 @@ class RelayAgent:
         self._intake_parts: list[str] = []
         self._intake_lock: asyncio.Lock = asyncio.Lock()
         self._hub = _get_hub()
+        # The AgentSession reference is wired in by entrypoint() after the session is
+        # built (see ``relay_agent._session_obj = session``). It lets the Live agent
+        # SPEAK card answers / clarifying lines via the configured TTS. None until set,
+        # and every use is guarded so TTS can never break the card pipeline.
+        self._session_obj: Any | None = None
+        # Greet-once guard + lock: the agent speaks a customer-service greeting the moment
+        # the first caller joins a Live room (never an empty room), exactly once.
+        self._greeted: bool = False
+        self._greet_lock: asyncio.Lock = asyncio.Lock()
         # The Orchestrator needs a DB session (to persist Card/CardSource), so it is
         # built per-synthesis inside a privileged_session — see _synthesise_and_broadcast.
 
@@ -319,6 +374,18 @@ class RelayAgent:
             )
             return
 
+        # Live mode: a closing/acknowledgement ("got it, thanks") is NOT a new question.
+        # Speak a brief customer-service close and clear the rolling window so the
+        # debounced continuous trigger can't replay the previous answer (the loop bug).
+        if self._mode == "live" and self._is_closing(text):
+            logger.info("session=%s: closing detected %r — speaking sign-off", self._session_id, text[:60])
+            self._trigger.clear_window()
+            asyncio.create_task(
+                self._say(self._closing_line(text)),
+                name=f"close_{self._session_id}_{utterance_id}",
+            )
+            return
+
         # Live / Desk: trigger detection -> grounded card synthesis.
         query_text = self._trigger.should_fire(text, speaker=speaker)
         if query_text:
@@ -326,6 +393,131 @@ class RelayAgent:
                 self._synthesise_and_broadcast(query_text),
                 name=f"synth_{self._session_id}_{utterance_id}",
             )
+
+    # ------------------------------------------------------------------
+    # Voice (Live mode only)
+    # ------------------------------------------------------------------
+
+    # Canned, fact-free steering lines spoken when the orchestrator returns no
+    # card (no grounding). They keep the caller engaged toward the call's topic
+    # WITHOUT inventing any company facts. Chosen deterministically by query
+    # length (see _no_card_line) so behaviour is stable, not random.
+    _NO_CARD_LINES: tuple[str, ...] = (
+        "I want to make sure I get you the right information — "
+        "could you give me a little more detail on that?",
+        "Good question — let me make sure I point you to the right answer. "
+        "Could you clarify what you're looking for?",
+        "I want to be sure I help you with exactly the right thing — "
+        "can you tell me a bit more about what you need?",
+    )
+
+    def _no_card_line(self, query_text: str) -> str:
+        """Pick a no-card steering line deterministically (by query length)."""
+        return self._NO_CARD_LINES[len(query_text) % len(self._NO_CARD_LINES)]
+
+    # Closing / acknowledgement phrases. When the caller says one of these (e.g. "got it,
+    # thanks"), they are NOT asking a new question — re-running retrieval would replay the
+    # previous answer (the "looping" bug). Instead we say a brief customer-service close.
+    _CLOSING_RE = re.compile(
+        r"\b(?:thanks|thank you|thank u|thank\s*you\s*so\s*much|got it|that'?s (?:all|it|"
+        r"great|perfect|helpful|everything|what i needed|exactly what i needed)|"
+        r"that (?:answers|covers) (?:it|my question|everything)|appreciate it|appreciated|"
+        r"perfect|great|awesome|wonderful|excellent|sounds good|will do|"
+        r"no(?:pe)?(?:,?\s*(?:that'?s all|i'?m good|thank))?|i'?m (?:good|all set|set)|"
+        r"all set|that helps|that helped|helpful|bye|good\s*bye|see you|see ya|cheers|"
+        r"have a (?:good|great)|take care|talk (?:to you )?later|okay thanks|ok thanks)\b",
+        re.IGNORECASE,
+    )
+    # Strong closing words that are decisive even in a longer sentence.
+    _STRONG_CLOSING_RE = re.compile(
+        r"\b(?:thank you|thanks|appreciate it|that'?s all|that'?s everything|i'?m all set|"
+        r"all set|good\s*bye|\bbye\b|take care|have a (?:good|great)|that (?:answers|covers))\b",
+        re.IGNORECASE,
+    )
+    _BYE_RE = re.compile(
+        r"\b(?:bye|good\s*bye|see you|see ya|that'?s all|that'?s everything|have a (?:good|great)|take care)\b",
+        re.IGNORECASE,
+    )
+
+    def _is_closing(self, text: str) -> bool:
+        """True if *text* is an acknowledgement / sign-off (not a new question).
+
+        Tolerant of natural phone phrasing: a short utterance matching common closing
+        words counts, and even a longer sentence counts if it carries a STRONG closing
+        signal (e.g. "thank you", "that's all", "bye") and isn't itself a question.
+        """
+        t = (text or "").strip()
+        if not t:
+            return False
+        # A real question (mark, or starts with an interrogative) is never a closing.
+        if "?" in t or _INTERROGATIVE_LEAD_RE.match(t):
+            return False
+        # Short utterances: any closing keyword is enough.
+        if len(t) <= 80 and self._CLOSING_RE.search(t):
+            return True
+        # Longer utterances: require a STRONG closing signal so we don't mistake a
+        # real request that happens to contain "great" for a sign-off.
+        if len(t) <= 160 and self._STRONG_CLOSING_RE.search(t):
+            return True
+        return False
+
+    def _closing_line(self, text: str) -> str:
+        """A warm, customer-service closing reply for an acknowledgement."""
+        if self._BYE_RE.search(text or ""):
+            return "Thanks for calling Northwind. Have a great day!"
+        return "You're welcome! Is there anything else I can help you with?"
+
+    async def greet(self) -> None:
+        """Speak the customer-service greeting exactly once, when a caller is present.
+
+        Triggered by participant-join (NOT by a timer), so it never greets an empty demo
+        room. A lock + the ``_greeted`` flag guarantee a single greeting even if several
+        join events fire: the first call acquires the lock and greets (retrying internally
+        until the AgentSession's TTS is ready); concurrent calls block on the lock, then
+        see ``_greeted`` and return. Best-effort — the call still works if TTS never comes up.
+        """
+        if self._mode != "live" or self._greeted:
+            return
+        greeting = (settings.agent_greeting or "").strip()
+        if not greeting:
+            return
+        async with self._greet_lock:
+            if self._greeted:
+                return  # another join event already greeted while we waited on the lock
+            # Retry a few times: a join event can beat the TTS pipeline being ready.
+            for _ in range(6):
+                session = self._session_obj
+                if session is not None:
+                    try:
+                        await session.say(greeting)
+                        self._greeted = True
+                        logger.info("session=%s: greeted caller", self._session_id)
+                        return
+                    except Exception as exc:  # noqa: BLE001 — not ready yet; retry
+                        logger.debug("session=%s: greet not ready (%s)", self._session_id, exc)
+                await asyncio.sleep(0.5)
+            logger.warning("session=%s: greeting could not be delivered", self._session_id)
+
+    async def _say(self, text: str) -> None:
+        """Speak *text* through the AgentSession's TTS, if available.
+
+        Live mode only. Fully guarded: a missing session, missing/failed TTS, or
+        any version difference in ``say`` is logged at debug and swallowed so the
+        card pipeline is never affected.
+        """
+        if self._mode != "live":
+            return
+        session = self._session_obj
+        if session is None:
+            logger.debug("session=%s: no AgentSession to speak with", self._session_id)
+            return
+        text = (text or "").strip()
+        if not text:
+            return
+        try:
+            await session.say(text)
+        except Exception as exc:  # noqa: BLE001 — TTS must never break the pipeline
+            logger.debug("session=%s: say() failed: %s", self._session_id, exc)
 
     # ------------------------------------------------------------------
     # Synthesis
@@ -387,12 +579,17 @@ class RelayAgent:
                     return
 
                 if card is None:
-                    # Grounding guard: no relevant chunk — stay silent.
+                    # Grounding guard: no relevant chunk — no card is broadcast (we
+                    # never invent facts). But in Live mode, instead of dead silence,
+                    # speak a brief, fact-free steering line so the caller stays engaged.
                     logger.info(
                         "session=%s: no grounding found for query %r — no card",
                         self._session_id,
                         query_text[:80],
                     )
+                    await self._say(self._no_card_line(query_text))
+                    # Drop the window so the continuous trigger doesn't replay this turn.
+                    self._trigger.clear_window()
                     return
 
                 elapsed_ms = int((asyncio.get_event_loop().time() - t_start) * 1000)
@@ -405,6 +602,18 @@ class RelayAgent:
 
                 # The card was already streamed to the dashboard via _emit
                 # (card.new + card.update). No second broadcast needed.
+
+                # Live mode: speak the grounded answer so the caller hears it. This
+                # runs AFTER the broadcast (the lock is already held for this
+                # synthesis), so the dashboard card is never blocked on TTS. Guarded
+                # inside _say — TTS failures never break the card pipeline.
+                await self._say(getattr(card, "answer", "") or "")
+
+                # Drop the rolling window now that this turn is answered — otherwise the
+                # debounced continuous trigger would re-fire the same window (still holding
+                # this question) and the agent would "loop" the answer when the caller
+                # pauses. Dedup history is preserved by clear_window().
+                self._trigger.clear_window()
 
                 # Update retrieval backend status on first card.
                 # (The Orchestrator sets card.retrieval_backend if available.)
@@ -639,6 +848,11 @@ async def entrypoint(ctx: JobContext) -> None:  # noqa: C901
     stt_model = settings.livekit_stt_model
     session = _build_agent_session(stt_model)
 
+    # Give the relay agent a handle on the live AgentSession so it can SPEAK
+    # (card answers + no-card steering lines) via the configured TTS. Guarded at
+    # the point of use (RelayAgent._say) — None-safe and try/excepted.
+    relay_agent._session_obj = session
+
     # ------------------------------------------------------------------
     # Wire transcript events → RelayAgent handlers
     # ------------------------------------------------------------------
@@ -698,10 +912,18 @@ async def entrypoint(ctx: JobContext) -> None:  # noqa: C901
             )
         )
 
+    def _maybe_greet() -> None:
+        """Greet the caller once when they join a Live room (greet() is single-flighted)."""
+        if mode == "live":
+            asyncio.create_task(relay_agent.greet(), name=f"greet_{session_id}")
+
     def _on_participant_connected(participant: Any) -> None:  # noqa: ANN001
         if _is_sip_participant(participant):
             logger.info("agent: SIP caller joined session=%s id=%s", session_id, getattr(participant, "identity", ""))
             _broadcast_call_status(True, "sip", str(getattr(participant, "identity", "")))
+        # Greet on join (the caller is now present). greet() is lock-guarded + once-only,
+        # so repeated join events never double-speak, and it never greets an empty room.
+        _maybe_greet()
 
     def _on_participant_disconnected(participant: Any) -> None:  # noqa: ANN001
         if _is_sip_participant(participant):
@@ -717,10 +939,14 @@ async def entrypoint(ctx: JobContext) -> None:  # noqa: C901
     # A SIP caller may already be in the room when the agent joins (dispatch races the
     # call setup) — surface the indicator for any pre-existing SIP participant.
     try:
-        for p in list(getattr(ctx.room, "remote_participants", {}).values()):
+        existing = list(getattr(ctx.room, "remote_participants", {}).values())
+        for p in existing:
             if _is_sip_participant(p):
                 _broadcast_call_status(True, "sip", str(getattr(p, "identity", "")))
                 break
+        # If a caller is already present when the agent joins, greet them (once-guarded).
+        if existing:
+            _maybe_greet()
     except Exception:  # noqa: BLE001
         pass
 
@@ -739,6 +965,10 @@ async def entrypoint(ctx: JobContext) -> None:  # noqa: C901
             )
         )
 
+    # NOTE: the greeting is driven by participant-join (above), NOT by a post-start timer —
+    # a timer would greet the empty demo room before the caller dials in, consuming the
+    # one-shot. greet() retries internally until TTS is ready, so a join always lands it.
+
     # ------------------------------------------------------------------
     # Start the session — blocks until the room closes.
     # Start the session — blocks until the room closes.
@@ -746,8 +976,28 @@ async def entrypoint(ctx: JobContext) -> None:  # noqa: C901
     # to use it on a project without the feature enabled causes a Rust-level
     # WebRTC panic and crashes the worker. Disabled until the Cloud feature is
     # provisioned on relay-ayfm1fbo.livekit.cloud.
+    #
+    # close_on_disconnect=False: keep the session alive across participant churn.
+    # By default the session tears down on every participant disconnect, and that
+    # teardown path triggers a native webrtc-sys panic ("malformed serialized
+    # RtcError") under the rapid join/leave we see while testing. Keeping the session
+    # alive means teardown runs once (at room end) instead of on every leave, so the
+    # panic is rare rather than constant. Built tolerantly: if the installed
+    # livekit-agents version rejects the kwarg, fall back to a bare start.
     # ------------------------------------------------------------------
-    await session.start(agent=agent, room=ctx.room)
+    try:
+        from livekit.agents import RoomInputOptions  # type: ignore
+
+        await session.start(
+            agent=agent,
+            room=ctx.room,
+            room_input_options=RoomInputOptions(close_on_disconnect=False),
+        )
+    except TypeError:
+        # Older/newer signature without room_input_options — start without it.
+        await session.start(agent=agent, room=ctx.room)
+    except ImportError:
+        await session.start(agent=agent, room=ctx.room)
 
     logger.info(
         "agent: session ended session=%s room=%s",

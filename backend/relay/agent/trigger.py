@@ -192,6 +192,18 @@ class TriggerDetector:
         self._last_continuous_fire_ts = time.monotonic()
         self._has_new_text_since_continuous = False
 
+    def clear_window(self) -> None:
+        """Drop the rolling context window WITHOUT clearing dedup history.
+
+        Call this right after an answer is produced so the debounced continuous mode does
+        NOT re-fire the now-answered Q&A again (the cause of the live agent "looping" the
+        previous answer when the caller pauses or just says "thanks"). Dedup hashes are
+        kept so an immediate repeat of the same question is still suppressed.
+        """
+        self._window_parts.clear()
+        self._has_new_text_since_continuous = False
+        self._last_continuous_fire_ts = time.monotonic()
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

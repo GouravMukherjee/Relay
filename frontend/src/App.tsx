@@ -25,7 +25,7 @@ interface Account {
 // ── Main dashboard ────────────────────────────────────────────────────────────
 
 function Dashboard({ account }: { account?: Account }) {
-  const { state, setMode, sendQuery, routeLead, toggleMic, restart, setLiveSource } =
+  const { state, setMode, sendQuery, routeLead, restart, replyToCustomer } =
     useRelaySession("live");
   const { toast } = useBackend();
   const [nav, setNav] = useState<NavKey>("dashboard");
@@ -100,14 +100,11 @@ function Dashboard({ account }: { account?: Account }) {
                 transition={{ duration: 0.28, ease: easeOut }}
               >
                 {nav === "dashboard" && state.mode === "live" && (
-                  <LiveView
-                    state={state}
-                    onQuery={sendQuery}
-                    onToggleMic={toggleMic}
-                    onSetSource={setLiveSource}
-                  />
+                  <LiveView state={state} onQuery={sendQuery} />
                 )}
-                {nav === "dashboard" && state.mode === "desk" && <DeskView state={state} onQuery={sendQuery} />}
+                {nav === "dashboard" && state.mode === "desk" && (
+                  <DeskView state={state} onReply={replyToCustomer} />
+                )}
                 {nav === "dashboard" && state.mode === "intake" && (
                   <IntakeView state={state} onRoute={routeLead} onQuery={sendQuery} />
                 )}

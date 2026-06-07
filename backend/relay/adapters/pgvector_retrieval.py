@@ -12,7 +12,8 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, select
+from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from relay.config import settings
@@ -87,7 +88,7 @@ class PgVectorRetrieval(RetrievalService):
                 )
                 .join(Document, Chunk.document_id == Document.id)
                 .where(Chunk.organization_id == org_uuid)
-                .order_by(text("score DESC"))
+                .order_by(sa_text("score DESC"))
                 .limit(k)
             )
             result = await session.execute(stmt)

@@ -95,7 +95,7 @@ function Dashboard({ account }: { account?: Account }) {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.28, ease: easeOut }}
               >
-                {nav === "dashboard" && state.mode === "live" && <LiveView state={state} />}
+                {nav === "dashboard" && state.mode === "live" && <LiveView state={state} onQuery={sendQuery} />}
                 {nav === "dashboard" && state.mode === "desk" && <DeskView state={state} onQuery={sendQuery} />}
                 {nav === "dashboard" && state.mode === "intake" && <IntakeView state={state} onRoute={routeLead} />}
                 {nav === "knowledge" && <KnowledgeView />}

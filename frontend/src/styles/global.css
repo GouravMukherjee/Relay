@@ -1707,3 +1707,36 @@ input {
 .copy-btn.active {
   color: var(--primary-container);
 }
+
+/* Live: typed-question bar (same retrieval path as voice; demo safety net). */
+.ask-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--r-lg);
+  color: var(--on-surface-variant);
+}
+.ask-bar input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  color: var(--on-surface);
+}
+.ask-send {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-lg);
+  color: var(--on-primary);
+  background: var(--primary-container);
+}
+.ask-send:hover {
+  background: var(--primary);
+}

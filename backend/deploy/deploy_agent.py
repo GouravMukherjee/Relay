@@ -1,7 +1,7 @@
 """TrueFoundry deploy spec — Relay LiveKit agent worker (always-on, NO inbound port).
 
 A long-lived process that holds a LiveKit room connection for the duration of a call:
-dials OUT to LiveKit Cloud, streams audio through Deepgram STT, runs the trigger detector,
+dials OUT to LiveKit Cloud, streams audio through LiveKit Inference STT, runs the trigger detector,
 and calls the in-process orchestrator to push grounded cards. It receives no inbound
 traffic, so it has no ports.
 
@@ -37,7 +37,8 @@ service = Service(
     env={
         "DATABASE_URL": "tfy-secret://relay/database-url",
         "REDIS_URL": "tfy-secret://relay/redis-url",
-        "DEEPGRAM_API_KEY": "tfy-secret://relay/deepgram-api-key",
+        # STT via LiveKit Inference (model string, billed on the LiveKit key) — no Deepgram.
+        "LIVEKIT_STT_MODEL": "assemblyai/universal-streaming",
         "ANTHROPIC_API_KEY": "tfy-secret://relay/anthropic-api-key",
         "TFY_API_KEY": "tfy-secret://relay/tfy-api-key",
         "TFY_GATEWAY_URL": "tfy-secret://relay/tfy-gateway-url",

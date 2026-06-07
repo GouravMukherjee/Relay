@@ -26,6 +26,11 @@ export const BACKEND_URL: string = normalizeOrigin(
 // Just the host:port, for compact display in the UI.
 export const BACKEND_HOST: string = BACKEND_URL.replace(/^https?:\/\//i, "");
 
+// LiveKit Cloud URL the browser uses to join the room + publish the mic in
+// functional mode (e.g. wss://<project>.livekit.cloud). Empty = no live audio
+// (manual typed queries still work).
+export const LIVEKIT_URL: string = (env.VITE_LIVEKIT_URL ?? "").trim();
+
 // The toggle. VITE_DEMO_MODE is canonical; VITE_USE_MOCK kept as a back-compat alias.
 const demoRaw = env.VITE_DEMO_MODE ?? env.VITE_USE_MOCK ?? "true";
 export const DEMO_MODE: boolean = String(demoRaw).toLowerCase() !== "false";

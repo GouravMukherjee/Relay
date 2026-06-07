@@ -30,7 +30,8 @@ Ask before deviating from a FROZEN CONTRACT.
 
 - **Frontend:** Next.js 15 (App Router) + TypeScript + Tailwind + shadcn/ui → Vercel
 - **Backend:** Python 3.11 + FastAPI (REST + WebSocket), fully async
-- **Real-time:** LiveKit Agents worker · **STT:** Deepgram · **TTS (optional):** Minimax
+- **Real-time:** LiveKit Agents worker · **STT:** LiveKit Inference (e.g. AssemblyAI
+  `universal-streaming`, billed on the LiveKit key) · **TTS (optional):** Minimax
 - **LLM:** Claude (primary) via the **TrueFoundry AI Gateway**; Qwen + Minimax as
   alternates behind the same gateway. One `LLMClient`, model selectable by config.
 - **Retrieval:** Moss (<10 ms) primary, pgvector fallback

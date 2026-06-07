@@ -1,7 +1,7 @@
 """Relay LiveKit agent worker.
 
-Joins a LiveKit room, streams audio through Deepgram STT, pushes transcript
-events to the WsHub, runs TriggerDetector, and on fire calls the Orchestrator
+Joins a LiveKit room, streams audio through LiveKit Inference STT, pushes
+transcript events to the WsHub, runs TriggerDetector, and on fire calls the Orchestrator
 then pushes ``card.new`` (with streaming ``card.update`` for long answers).
 
 Run modes
@@ -42,11 +42,9 @@ from typing import Any
 try:
     from livekit.agents import JobContext, WorkerOptions, cli
     from livekit.agents.voice import Agent, AgentSession  # type: ignore[import-untyped]
-    from livekit.plugins import deepgram  # type: ignore[import-untyped]
 except ImportError as exc:
     raise ImportError(
-        "livekit-agents and livekit-plugins-deepgram must be installed. "
-        "Run: pip install 'livekit-agents>=0.8.0' 'livekit-plugins-deepgram>=0.6.0'"
+        "livekit-agents must be installed. Run: pip install 'livekit-agents>=0.8.0'"
     ) from exc
 
 # ---------------------------------------------------------------------------
@@ -145,7 +143,7 @@ class RelayAgent:
     """Encapsulates the per-session state for one LiveKit room.
 
     One instance is created per call to ``entrypoint()``.  It wires together:
-    - Deepgram STT (partial + final transcripts)
+    - LiveKit Inference STT (partial + final transcripts)
     - TriggerDetector (question detection + debounced continuous)
     - Orchestrator (retrieval → synthesis → card)
     - WsHub broadcast (transcript.partial, transcript.final, card.new, card.update)
@@ -437,28 +435,23 @@ async def entrypoint(ctx: JobContext) -> None:  # noqa: C901
     )
 
     # ------------------------------------------------------------------
-    # LiveKit AgentSession + Deepgram STT
+    # LiveKit AgentSession + LiveKit Inference STT
     # ------------------------------------------------------------------
-    # TODO: confirm LiveKit Agents API — AgentSession / Agent / deepgram.STT
-    # constructor signatures may vary across livekit-agents versions.
-    # The pattern below mirrors the official note-taking-assistant example
-    # (livekit-agents >=0.8.x pipeline style).
-
-    # Build the STT plugin — Deepgram Flux / Nova-2 streaming, partials enabled.
-    # eager_eot_threshold: lower = faster end-of-turn detection (better for live co-pilot).
-    stt_plugin = deepgram.STT(  # type: ignore[attr-defined]
-        api_key=settings.deepgram_api_key or None,
-        # TODO: confirm Deepgram plugin constructor — may be deepgram.STTv2 in newer builds
-        # interim_results=True enables partial transcript events.
-    )
+    # STT runs through LiveKit Inference: a model string (e.g.
+    # "assemblyai/universal-streaming") is passed to AgentSession and routed by
+    # LiveKit using the existing LIVEKIT_API_KEY / LIVEKIT_API_SECRET — no separate
+    # STT provider account or plugin package, billed against LiveKit credits. The
+    # model is configurable via settings.livekit_stt_model (env LIVEKIT_STT_MODEL).
+    # TODO: confirm LiveKit Agents API — AgentSession(stt="<provider>/<model>") is the
+    # LiveKit Inference form for livekit-agents >=1.x; adjust if the installed version differs.
 
     # The Agent is STT-only — no LLM or TTS; Relay's Orchestrator handles synthesis.
     agent = Agent(  # type: ignore[attr-defined]
         instructions="You are a silent transcription agent.",  # unused (no LLM), but required by Agent
-        stt=stt_plugin,
     )
 
-    session = AgentSession()  # type: ignore[attr-defined]
+    # STT via LiveKit Inference (model string); partial transcripts enabled by default.
+    session = AgentSession(stt=settings.livekit_stt_model)  # type: ignore[attr-defined]
 
     # ------------------------------------------------------------------
     # Wire transcript events → RelayAgent handlers

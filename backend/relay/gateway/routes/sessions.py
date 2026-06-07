@@ -112,7 +112,22 @@ async def create_session(
     livekit_room = body.livekit_room or f"relay-{session_id}"
     if body.mode in ("live", "intake"):
         try:
-            from relay.adapters.livekit_tokens import mint_livekit_token
+            from relay.adapters.livekit_tokens import ensure_room, mint_livekit_token
+
+            # Stamp session context onto the room so the agent worker can read
+            # org_id / mode / customer_id from room metadata (NOT from client msgs).
+            try:
+                await ensure_room(
+                    livekit_room,
+                    {
+                        "session_id": session_id,
+                        "org_id": str(org_id),
+                        "mode": body.mode,
+                        "customer_id": body.customer_id or "",
+                    },
+                )
+            except Exception as exc:  # noqa: BLE001 — best-effort; never block session start
+                logger.warning("LiveKit room ensure failed: %s", exc)
 
             livekit_token = mint_livekit_token(
                 room=livekit_room,

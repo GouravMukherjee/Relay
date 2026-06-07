@@ -43,9 +43,10 @@ tfy-api-key  tfy-gateway-url
 anthropic-api-key  qwen-api-key  minimax-api-key
 unsiloed-api-key
 livekit-url  livekit-api-key  livekit-api-secret
-deepgram-api-key
+# STT runs through LiveKit Inference (billed on the LiveKit key) — NO Deepgram secret.
+# LIVEKIT_STT_MODEL has a default (assemblyai/universal-streaming), so it's optional.
 aws-access-key-id  aws-secret-access-key  s3-bucket
-slack-webhook-url
+slack-webhook-url       # OPTIONAL — if unset, lead routing skips Slack and logs
 default-org-id          # the single demo org uuid (matches DEFAULT_ORG_ID)
 ```
 
@@ -56,7 +57,7 @@ pip install truefoundry
 tfy login --host <your-truefoundry-host>
 export WORKSPACE_FQN=<cluster>:<workspace>            # e.g. tfy-use1:relay
 export GATEWAY_HOST=relay-gateway.<your-tfy-domain>
-export FRONTEND_ORIGIN=https://<your-app>.vercel.app  # must equal the Vercel origin
+export FRONTEND_ORIGIN=https://<your-app>.vercel.app  # no trailing slash; comma-separated list ok (e.g. +http://localhost:3000)
 
 cd backend
 python deploy/deploy_migrate.py     # register, then TRIGGER once in the UI
@@ -92,11 +93,19 @@ docker build -t relay backend/
 docker run --rm relay python -c "import relay.gateway.app; print('ok')"
 ```
 
+## STT
+
+STT runs through **LiveKit Inference** — the agent worker passes a model string
+(`LIVEKIT_STT_MODEL`, default `assemblyai/universal-streaming`) to the `AgentSession`,
+and LiveKit routes/bills it against the existing `LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`.
+There is no separate STT provider account, plugin package, or `DEEPGRAM_API_KEY`.
+
 ## Known gaps
 
-- **Browser LiveKit audio is not wired** in the frontend (it uses the WS event transport, no
-  mic capture / room join). The manual-query path works end-to-end; true live-audio needs
-  LiveKit client-SDK wiring + agent dispatch to the room.
-- Confirm the `relay-agent` is dispatched to the room created by `POST /sessions`.
-- Every adapter raises `RuntimeError` at construction if its required secret is blank — all
-  secrets above must be set for the services to boot.
+- **Browser LiveKit audio is now wired** (`frontend` uses `livekit-client` to join the
+  room and publish the mic when `VITE_DEMO_MODE=false`). Confirm `VITE_LIVEKIT_URL` is set
+  on Vercel and that the `relay-agent` is dispatched to the room created by `POST /sessions`
+  (automatic dispatch when `agent_name` is unset; the gateway stamps room metadata so the
+  agent reads the right org/mode).
+- Required secrets (other than Slack and `LIVEKIT_STT_MODEL`) must be set or the adapters
+  raise `RuntimeError` at construction and the service won't boot.

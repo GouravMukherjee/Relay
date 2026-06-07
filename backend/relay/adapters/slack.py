@@ -2,7 +2,10 @@
 
 Posts lead-routing notifications to a Slack incoming webhook.
 
-Required creds: ``slack_webhook_url``.
+Slack is OPTIONAL: if ``slack_webhook_url`` is unset the notifier is created in a
+disabled state — :meth:`route_lead` then logs and returns ``None`` instead of
+raising, so Intake-mode lead routing still succeeds (the caller falls back to the
+default channel). This adapter therefore does NOT raise at construction.
 """
 from __future__ import annotations
 
@@ -18,27 +21,34 @@ logger = logging.getLogger(__name__)
 class SlackNotifier:
     """Slack notifier for lead-routing events.
 
-    Posts a formatted message to the configured incoming webhook URL when
-    a lead is routed to a sales rep or channel.
+    Posts a formatted message to the configured incoming webhook URL when a lead
+    is routed to a sales rep or channel. If no webhook is configured the notifier
+    is *disabled*: ``route_lead`` becomes a no-op that logs and returns ``None``.
 
-    Required settings
+    Optional settings
     -----------------
-    slack_webhook_url : str — Slack incoming webhook URL
+    slack_webhook_url : str — Slack incoming webhook URL. If empty, Slack posting
+        is skipped (logged), not an error.
     """
 
     def __init__(self) -> None:
-        if not settings.slack_webhook_url:
-            raise RuntimeError(
-                "SlackNotifier requires SLACK_WEBHOOK_URL to be set in the environment."
-            )
-        self._webhook_url = settings.slack_webhook_url
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(10.0))
+        self._webhook_url = settings.slack_webhook_url or ""
+        self._enabled = bool(self._webhook_url)
+        # Only build an HTTP client when actually enabled.
+        self._client = httpx.AsyncClient(timeout=httpx.Timeout(10.0)) if self._enabled else None
+        if not self._enabled:
+            logger.info("slack_notifier_disabled (SLACK_WEBHOOK_URL unset) — posts will be skipped")
+
+    @property
+    def enabled(self) -> bool:
+        """Whether a webhook is configured and posting is active."""
+        return self._enabled
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    async def route_lead(self, text: str) -> str:
+    async def route_lead(self, text: str) -> str | None:
         """Post *text* to the Slack webhook as a lead-routing notification.
 
         Args:
@@ -47,10 +57,14 @@ class SlackNotifier:
                   does NOT include PII beyond what the sales rep needs.
 
         Returns:
-            The target channel name/identifier if returned by Slack, or
-            ``"#routed"`` as a placeholder when the webhook response is
-            opaque (Slack incoming webhooks return ``"ok"`` as plain text).
+            The target channel name/identifier (``"#routed"`` placeholder, since
+            standard incoming webhooks return only ``"ok"``), or ``None`` when
+            Slack is not configured (the post is skipped and logged).
         """
+        if not self._enabled or self._client is None:
+            logger.info("slack_route_skipped (no webhook configured)", extra={"text_len": len(text)})
+            return None
+
         payload = {"text": text}
         response = await self._client.post(self._webhook_url, json=payload)
         response.raise_for_status()
@@ -63,5 +77,6 @@ class SlackNotifier:
         return "#routed"
 
     async def aclose(self) -> None:
-        """Close the underlying HTTP client. Call on application shutdown."""
-        await self._client.aclose()
+        """Close the underlying HTTP client. Safe to call when disabled."""
+        if self._client is not None:
+            await self._client.aclose()

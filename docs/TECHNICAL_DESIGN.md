@@ -52,7 +52,7 @@ The hard problem is **latency**: a natural reply budget is ~200 ms, but cold vec
 - Language: Python (async), using the LiveKit Agents framework.
 
 ### 3.2 STT (speech-to-text)
-- Streaming, low-latency. Candidate: Deepgram / Whisper-class streaming model.
+- Streaming, low-latency via **LiveKit Inference**: a model string (e.g. AssemblyAI `universal-streaming`) passed to the `AgentSession`, routed and billed by LiveKit using the existing LiveKit API key — no separate STT provider account or plugin. Configurable via `LIVEKIT_STT_MODEL`.
 - Emits partial transcripts (for display) and finals (for triggering).
 - Configurable endpointing to balance latency vs accuracy.
 
@@ -106,7 +106,7 @@ Mitigations: stream the card token-by-token; pre-warm Claude connection; cache e
 ## 5. Tech stack
 
 - **Audio transport:** LiveKit
-- **STT:** streaming (Deepgram / Whisper-class)
+- **STT:** LiveKit Inference (e.g. AssemblyAI `universal-streaming`), billed on the LiveKit key
 - **Retrieval:** Moss (<10 ms)
 - **Doc parsing:** Unsiloed
 - **LLM:** Claude (primary), Minimax (optional)

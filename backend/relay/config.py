@@ -98,6 +98,14 @@ class Settings(BaseSettings):
         default="",
         description="LiveKit API secret (server-side only — never expose).",
     )
+    livekit_stt_model: str = Field(
+        default="assemblyai/universal-streaming",
+        description=(
+            "STT model string routed through LiveKit Inference (billed against "
+            "LiveKit credits via LIVEKIT_API_KEY/SECRET — no separate STT account). "
+            "Passed to AgentSession(stt=...)."
+        ),
+    )
 
     # ------------------------------------------------------------------
     # Unsiloed (document parsing)
@@ -127,11 +135,6 @@ class Settings(BaseSettings):
     qwen_api_key: str = Field(default="", description="Qwen API key.")
 
     # ------------------------------------------------------------------
-    # Deepgram (speech-to-text)
-    # ------------------------------------------------------------------
-    deepgram_api_key: str = Field(default="", description="Deepgram API key.")
-
-    # ------------------------------------------------------------------
     # AWS / S3 (raw file storage)
     # ------------------------------------------------------------------
     aws_access_key_id: str = Field(default="", description="AWS access key ID.")
@@ -157,8 +160,12 @@ class Settings(BaseSettings):
     # Application / runtime settings
     # ------------------------------------------------------------------
     frontend_origin: str = Field(
-        default="http://localhost:5173",
-        description="Allowed CORS origin (the deployed frontend URL in production).",
+        default="http://localhost:5173,http://localhost:3000",
+        description=(
+            "Allowed CORS origin(s). Comma-separated list supported (e.g. a localhost "
+            "dev origin plus the deployed frontend URL). Trailing slashes are stripped. "
+            "Parsed into a list by the `cors_origins` property — never use '*' with credentials."
+        ),
     )
     llm_model: str = Field(
         default="claude",
@@ -176,6 +183,24 @@ class Settings(BaseSettings):
         default="relay_app",
         description="Postgres role used by the application (subject to RLS).",
     )
+
+    # ------------------------------------------------------------------
+    # Derived values
+    # ------------------------------------------------------------------
+    @property
+    def cors_origins(self) -> list[str]:
+        """Parse ``frontend_origin`` into a clean list of allowed CORS origins.
+
+        Splits on commas, strips surrounding whitespace, and strips any trailing
+        slash (a trailing slash makes the browser's Origin header fail to match).
+        Empty entries are dropped. Used as ``allow_origins`` in the CORS middleware
+        (with ``allow_credentials=True``, so a wildcard is never used).
+        """
+        return [
+            origin.strip().rstrip("/")
+            for origin in self.frontend_origin.split(",")
+            if origin.strip()
+        ]
 
 
 @lru_cache(maxsize=1)

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { WsTransport, type RelayTransport } from "../api/transport";
 import { MockEngine } from "../mock/engine";
-import { USE_MOCK, wsUrl } from "../config";
+import { LIVEKIT_URL, USE_MOCK, wsUrl } from "../config";
 
 // Token injector for WS URL. Set externally by AuthContext when USE_MOCK=false.
 let _wsGetToken: (() => string | null) | null = null;
@@ -57,6 +57,8 @@ export function useRelaySession(initialMode: Mode) {
 
   const transportRef = useRef<RelayTransport | null>(null);
   const engineRef = useRef<MockEngine | null>(null);
+  // LiveKit room (functional mode only): publishes the mic so the agent transcribes.
+  const roomRef = useRef<import("livekit-client").Room | null>(null);
 
   const handleEvent = useCallback((e: ServerEvent) => {
     setState((s) => {
@@ -123,6 +125,25 @@ export function useRelaySession(initialMode: Mode) {
             ? `${rawWsUrl}${rawWsUrl.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`
             : rawWsUrl;
           transport = new WsTransport(fullWsUrl);
+
+          // Best-effort: join the LiveKit room and publish the mic so the agent
+          // worker can transcribe live audio. Audio failure is non-fatal — the
+          // session still works with manual queries + the card/transcript WS.
+          if (res.livekit_token && LIVEKIT_URL) {
+            try {
+              const { Room } = await import("livekit-client");
+              const room = new Room();
+              await room.connect(LIVEKIT_URL, res.livekit_token);
+              if (disposed) {
+                await room.disconnect();
+                return;
+              }
+              await room.localParticipant.setMicrophoneEnabled(true);
+              roomRef.current = room;
+            } catch (audioErr) {
+              console.warn("Relay: LiveKit audio unavailable —", audioErr);
+            }
+          }
         } catch (e) {
           if (disposed) return;
           const msg = (e as { message?: string })?.message ?? "request failed";
@@ -149,6 +170,8 @@ export function useRelaySession(initialMode: Mode) {
       disposed = true;
       transportRef.current?.close();
       transportRef.current = null;
+      void roomRef.current?.disconnect();
+      roomRef.current = null;
       engineRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

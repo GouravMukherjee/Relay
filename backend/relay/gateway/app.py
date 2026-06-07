@@ -2,7 +2,8 @@
 
 :func:`create_app` wires:
 
-* **CORS** locked to ``settings.frontend_origin`` (credentials allowed).
+* **CORS** locked to ``settings.cors_origins`` — the parsed ``FRONTEND_ORIGIN`` list
+  (comma-separated, trailing slashes stripped; credentials allowed, never ``*``).
 * All REST routers from ``relay.gateway.routes.*`` mounted under ``/api/v1`` by their
   module-level ``router`` symbol (documents, sessions, query, leads, account).
 * The WebSocket router (``relay.gateway.ws.router``) mounted at the app root so its path
@@ -250,10 +251,13 @@ def create_app() -> FastAPI:
         description="Relay ambient co-pilot gateway (REST + WebSocket).",
     )
 
-    # --- CORS: locked to the single frontend origin, credentials allowed. ---
+    # --- CORS: locked to the configured frontend origin(s), credentials allowed.
+    #     FRONTEND_ORIGIN may be a comma-separated list (e.g. a localhost dev origin
+    #     plus the deployed frontend); settings.cors_origins parses it and strips any
+    #     trailing slash. Never '*' with credentials. ---
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.frontend_origin],
+        allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

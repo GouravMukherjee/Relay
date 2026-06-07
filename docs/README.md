@@ -22,7 +22,7 @@ Full detail in [`TECHNICAL_DESIGN.md`](./TECHNICAL_DESIGN.md).
 | Layer | Tool |
 |-------|------|
 | Audio transport | LiveKit |
-| STT | streaming (Deepgram / Whisper-class) |
+| STT | LiveKit Inference (e.g. AssemblyAI universal-streaming) |
 | Retrieval | **Moss** (<10 ms) |
 | Doc parsing | Unsiloed |
 | LLM | Claude (primary), Minimax (optional) |

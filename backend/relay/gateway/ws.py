@@ -89,14 +89,19 @@ class WsHub:
     async def start_redis(self) -> None:
         """Connect the Redis publisher + subscriber so broadcasts cross processes.
 
-        Idempotent. Called from the gateway lifespan and the agent worker entrypoint.
-        The agent process publishes (it holds no browser sockets); the gateway process
-        publishes AND subscribes (its subscriber delivers agent-published events to the
-        browser sockets it owns). Messages tagged with this process's own origin are
-        skipped on receipt to avoid double-delivery.
+        Idempotent *within the same event loop*. Called from the gateway lifespan and
+        the agent worker entrypoint. If a stale connection exists from a previous event
+        loop (LiveKit Agents spawns new loops per job), it is torn down and recreated
+        so aioredis futures are always bound to the currently-running loop.
         """
+        # Detect stale connection: sub_task done/cancelled means the loop changed.
         if self._redis is not None:
-            return
+            stale = self._sub_task is None or self._sub_task.done()
+            if not stale:
+                return  # healthy connection in this loop — nothing to do
+            logger.info("ws hub: stale redis connection detected, reconnecting")
+            await self.stop_redis()
+
         import redis.asyncio as aioredis
 
         self._redis = aioredis.from_url(settings.redis_url)

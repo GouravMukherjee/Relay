@@ -116,10 +116,16 @@ async def ingest_document(
 
         # ------------------------------------------------------------------
         # Step 2: Parse
+        # Plain-text files (.txt, .md) are decoded directly — Unsiloed is a
+        # vision API that rejects non-binary formats with 400.
         # ------------------------------------------------------------------
         _content_type = _source_type_to_mime(source_type)
         t_parse_start = time.monotonic()
-        parsed = await parser.parse(raw_bytes, _content_type, filename=None)
+        if source_type.lower().lstrip(".") in ("txt", "md", "markdown"):
+            from relay.interfaces.parser import ParsedDoc
+            parsed = ParsedDoc(text=raw_bytes.decode("utf-8", errors="replace"), blocks=[])
+        else:
+            parsed = await parser.parse(raw_bytes, _content_type, filename=None)
         t_parse_ms = (time.monotonic() - t_parse_start) * 1000
         log_latency(logger, "parse", latency_ms=t_parse_ms, document_id=document_id)
 

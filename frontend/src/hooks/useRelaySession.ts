@@ -106,9 +106,21 @@ export function useRelaySession(initialMode: Mode) {
         engineRef.current = engine;
         transport = engine;
       } else {
-        const res = await api.createSession(initialMode);
-        sessionId = res.session_id;
-        transport = new WsTransport(wsUrl(res.ws_url));
+        // Functional mode: create a session on the backend, then open its WS.
+        try {
+          const res = await api.createSession(initialMode);
+          sessionId = res.session_id;
+          transport = new WsTransport(wsUrl(res.ws_url));
+        } catch (e) {
+          if (disposed) return;
+          const msg = (e as { message?: string })?.message ?? "request failed";
+          setState((s) => ({
+            ...s,
+            status: "ended",
+            lastError: `Can't reach backend — ${msg}`,
+          }));
+          return;
+        }
       }
 
       if (disposed) {
@@ -117,7 +129,7 @@ export function useRelaySession(initialMode: Mode) {
       }
       transport.onEvent(handleEvent);
       transportRef.current = transport;
-      setState((s) => ({ ...s, sessionId }));
+      setState((s) => ({ ...s, sessionId, lastError: null }));
     }
 
     void start();

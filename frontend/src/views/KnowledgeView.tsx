@@ -109,7 +109,7 @@ export function DemoBanner({ endpoint }: { endpoint: string }) {
       transition={{ duration: 0.4, delay: 0.1 }}
     >
       <Icon name="info" size={16} />
-      Showing demo data. Wired to <code>{endpoint}</code> — connect the gateway (VITE_USE_MOCK=false) for live data.
+      Showing demo data. Wired to <code>{endpoint}</code> — set <code>VITE_DEMO_MODE=false</code> for live data.
     </motion.div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useRelaySession } from "./hooks/useRelaySession";
 import { useBackend } from "./backend";
@@ -19,6 +19,15 @@ export function App() {
   const { call, toast } = useBackend();
   const [beatsLeft, setBeatsLeft] = useState(true);
   const [nav, setNav] = useState<NavKey>("dashboard");
+
+  // Surface backend connection errors (functional mode) as a toast.
+  const lastShownError = useRef<string | null>(null);
+  useEffect(() => {
+    if (state.lastError && state.lastError !== lastShownError.current) {
+      lastShownError.current = state.lastError;
+      toast(state.lastError, "error");
+    }
+  }, [state.lastError, toast]);
 
   const onBeat = async () => {
     const more = await playNextBeat();
@@ -46,7 +55,7 @@ export function App() {
       <TopNav mode={state.mode} onMode={onMode} onSettings={onSettings} />
 
       <div className="workspace">
-        <Sidebar mode={state.mode} nav={nav} onNav={setNav} onNewAnalysis={onNewAnalysis} />
+        <Sidebar mode={state.mode} nav={nav} onNav={setNav} onNewAnalysis={onNewAnalysis} status={state.status} />
         <main className="main">
           <AnimatePresence mode="wait">
             <motion.div

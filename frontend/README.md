@@ -21,17 +21,35 @@ grounded cards, mode switching, and a scripted Intake lead.
   the Desk sync-issue recall, and the Intake lead all resolve against the
   bundled Northwind knowledge base.
 
-## Wire it to the real gateway
+## Demo ↔ Functional toggle
 
-Set `VITE_USE_MOCK=false` (see [`.env.example`](.env.example)). The app then:
+One variable flips the whole app between the in-browser demo and a real backend
+(see [`.env.example`](.env.example)):
 
-1. `POST /api/v1/sessions` to create a session,
-2. opens the returned `ws_url` WebSocket for `transcript.*` / `card.*` /
-   `session.status` events,
-3. sends `mode.set`, `query.manual`, `card.pin`, `card.dismiss` upstream.
+```bash
+VITE_DEMO_MODE=true                       # demo: mock engine, no network (default)
+VITE_DEMO_MODE=false                      # functional: connect to the backend
+VITE_BACKEND_URL=http://192.168.1.50:8000 # the backend IP/origin
+```
 
-The Vite dev server proxies `/api` and `/ws` to `VITE_GATEWAY_URL`
-(default `http://localhost:8000`).
+`VITE_BACKEND_URL` accepts a bare `IP[:port]` or a full URL; a bare host is
+normalized to `http://`. In **functional** mode the frontend talks to that origin
+**directly** — REST at `<backend>/api/v1`, WebSocket at `<backend>/ws` — so the
+backend must allow CORS from the frontend origin.
+
+When functional, the app:
+
+1. `POST <backend>/api/v1/sessions` to create a session,
+2. opens the returned `ws_url` WebSocket (resolved against `VITE_BACKEND_URL`) for
+   `transcript.*` / `card.*` / `session.status` events — with auto-reconnect and a
+   connection indicator in the sidebar,
+3. sends `mode.set`, `query.manual`, `card.pin`, `card.dismiss` upstream,
+4. surfaces unreachable-backend errors as a toast instead of a blank screen.
+
+**CORS-free local dev:** alternatively set `VITE_API_BASE=/api/v1` and the Vite
+dev server proxies `/api` + `/ws` to `VITE_BACKEND_URL` (same-origin, no CORS).
+
+> `VITE_USE_MOCK` is still honored as a back-compat alias for `VITE_DEMO_MODE`.
 
 ## Backend wiring — every control points at the gateway
 

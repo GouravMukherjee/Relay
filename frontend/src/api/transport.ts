@@ -11,23 +11,73 @@ export interface RelayTransport {
 }
 
 // ── Real WebSocket transport ───────────────────────────────────────────────────
+// Connects to the backend WS, queues sends until open, surfaces connection loss as
+// `error` / `session.status` events, and transparently reconnects with backoff.
 export class WsTransport implements RelayTransport {
-  private ws: WebSocket;
+  private ws: WebSocket | null = null;
   private listeners = new Set<(e: ServerEvent) => void>();
   private queue: ClientEvent[] = [];
+  private closedByUs = false;
+  private retries = 0;
 
-  constructor(url: string) {
-    this.ws = new WebSocket(url);
-    this.ws.onopen = () => {
-      this.queue.forEach((e) => this.ws.send(JSON.stringify(e)));
+  constructor(private url: string) {
+    this.connect();
+  }
+
+  private connect() {
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(this.url);
+    } catch (e) {
+      this.emit({
+        type: "error",
+        ts: new Date().toISOString(),
+        data: { code: "ws_connect_failed", message: (e as Error)?.message ?? "bad WebSocket URL" },
+      });
+      return;
+    }
+    this.ws = ws;
+
+    ws.onopen = () => {
+      this.retries = 0;
+      this.queue.forEach((e) => ws.send(JSON.stringify(e)));
       this.queue = [];
     };
-    this.ws.onmessage = (msg) => {
+
+    ws.onmessage = (msg) => {
       try {
-        const evt = JSON.parse(msg.data) as ServerEvent;
-        this.listeners.forEach((cb) => cb(evt));
+        this.emit(JSON.parse(msg.data) as ServerEvent);
       } catch {
         /* ignore malformed frames */
+      }
+    };
+
+    ws.onerror = () => {
+      this.emit({
+        type: "error",
+        ts: new Date().toISOString(),
+        data: { code: "ws_error", message: `WebSocket error (${this.url})` },
+      });
+    };
+
+    ws.onclose = () => {
+      if (this.closedByUs) return;
+      this.emit({
+        type: "session.status",
+        ts: new Date().toISOString(),
+        data: { status: "ended", retrieval_backend: "moss" },
+      });
+      // Reconnect with capped exponential backoff.
+      if (this.retries < 5) {
+        const delay = Math.min(1000 * 2 ** this.retries, 10000);
+        this.retries++;
+        setTimeout(() => !this.closedByUs && this.connect(), delay);
+      } else {
+        this.emit({
+          type: "error",
+          ts: new Date().toISOString(),
+          data: { code: "ws_unreachable", message: `Lost connection to ${this.url}` },
+        });
       }
     };
   }
@@ -37,12 +87,17 @@ export class WsTransport implements RelayTransport {
   }
 
   send(e: ClientEvent) {
-    if (this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(e));
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(e));
     else this.queue.push(e);
   }
 
   close() {
+    this.closedByUs = true;
     this.listeners.clear();
-    this.ws.close();
+    this.ws?.close();
+  }
+
+  private emit(e: ServerEvent) {
+    this.listeners.forEach((cb) => cb(e));
   }
 }

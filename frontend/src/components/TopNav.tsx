@@ -34,7 +34,8 @@ export function TopNav({ mode, onMode, onSettings }: Props) {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5, ease: easeOut, delay: 0.1 }}
         >
-          Relay
+          <img className="brand-logo" src="/relay-logo.png" alt="Relay" width={32} height={32} />
+          <span className="brand-name">Relay</span>
         </motion.div>
 
         <div className="modeswitch">

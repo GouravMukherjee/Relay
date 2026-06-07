@@ -6,3 +6,11 @@ ruvector.db
 # SQLite working files
 *.db-shm
 *.db-wal
+
+frontend/dist
+frontend/node_modules
+frontend/.env.local
+
+backend/dist
+backend/node_modules
+backend/.env.local

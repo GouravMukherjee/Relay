@@ -149,6 +149,18 @@ input {
 }
 .brand {
   width: 256px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: block;
+  flex-shrink: 0;
+}
+.brand-name {
   font-size: 24px;
   font-weight: 900;
   letter-spacing: -0.04em;
@@ -323,6 +335,39 @@ input {
 .demo-flag .ms {
   font-size: 13px;
   color: var(--emerald-600);
+}
+.conn-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--on-surface-variant);
+  background: var(--surface-container);
+  border: 1px solid var(--outline-variant);
+  padding: 5px 11px;
+  border-radius: var(--r-full);
+}
+.conn-flag .conn-host {
+  font-size: 11px;
+  color: var(--outline);
+}
+.conn-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--outline-variant);
+}
+.conn-dot.active {
+  background: var(--emerald-500);
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+  animation: pulse-emerald 2s infinite;
+}
+.conn-dot.connecting {
+  background: var(--primary-container);
+  animation: blink 1s infinite;
+}
+.conn-dot.ended {
+  background: #ef4444;
 }
 
 /* ── Main content ───────────────────────────────────────────────────────────── */
@@ -1105,13 +1150,16 @@ input {
 /* ── Toasts ─────────────────────────────────────────────────────────────────── */
 .toast-stack {
   position: fixed;
-  left: 24px;
+  left: 280px; /* clear the 256px sidebar + its connection indicator */
   bottom: 20px;
   z-index: 50;
   display: flex;
   flex-direction: column;
   gap: 8px;
   max-width: 420px;
+}
+@media (max-width: 900px) {
+  .toast-stack { left: 16px; }
 }
 .toast {
   display: flex;

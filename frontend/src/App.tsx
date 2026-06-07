@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useRelaySession } from "./hooks/useRelaySession";
 import { useBackend } from "./backend";
@@ -13,9 +13,23 @@ import { IntakeView } from "./views/IntakeView";
 import { KnowledgeView } from "./views/KnowledgeView";
 import { TranscriptsView } from "./views/TranscriptsView";
 import { TeamView } from "./views/TeamView";
+import { USE_MOCK } from "./config";
 
-export function App() {
-  const { state, setMode, sendQuery, routeLead, playNextBeat, canPlayBeat } = useRelaySession("live");
+// Lazily load auth components only when USE_MOCK=false.
+// Vite tree-shakes the entire auth subtree in demo builds.
+const AuthProviderLazy = lazy(() =>
+  import("./auth/AuthContext").then((m) => ({ default: m.AuthProvider }))
+);
+
+const LoginGateLazy = lazy(() =>
+  import("./auth/LoginGate").then((m) => ({ default: m.LoginGate }))
+);
+
+// ── Main dashboard ────────────────────────────────────────────────────────────
+
+function Dashboard() {
+  const { state, setMode, sendQuery, routeLead, playNextBeat, canPlayBeat } =
+    useRelaySession("live");
   const { call, toast } = useBackend();
   const [beatsLeft, setBeatsLeft] = useState(true);
   const [nav, setNav] = useState<NavKey>("dashboard");
@@ -97,5 +111,25 @@ export function App() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+// ── Root ──────────────────────────────────────────────────────────────────────
+
+export function App() {
+  if (USE_MOCK) {
+    // Mock path: no auth, no Supabase, no login gate. 100% intact.
+    return <Dashboard />;
+  }
+
+  // Real backend path: wrap in lazily-loaded AuthProvider + LoginGate.
+  return (
+    <Suspense fallback={<div className="login-loading"><span>Loading…</span></div>}>
+      <AuthProviderLazy>
+        <LoginGateLazy>
+          <Dashboard />
+        </LoginGateLazy>
+      </AuthProviderLazy>
+    </Suspense>
   );
 }

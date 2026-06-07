@@ -4,6 +4,20 @@
 import { API_BASE } from "../config";
 import type { Card, DocumentRecord, Lead, Mode, SessionInfo, Utterance } from "../types";
 
+// Token provider: set this to a function that returns the current JWT so that
+// req() and uploadDocument can inject "Authorization: Bearer <token>".
+// Wired up by AuthContext when VITE_USE_MOCK=false; no-op in mock mode.
+let _getToken: (() => string | null) | null = null;
+
+export function setTokenProvider(fn: () => string | null): void {
+  _getToken = fn;
+}
+
+function authHeaders(): Record<string, string> {
+  const token = _getToken?.();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export interface ApiError {
   code: string;
   message: string;
@@ -26,7 +40,7 @@ export interface Notification {
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    headers: { "Content-Type": "application/json", ...authHeaders(), ...(init?.headers ?? {}) },
     ...init,
   });
   if (!res.ok) {
@@ -54,7 +68,11 @@ export const api = {
     form.append("file", file);
     if (title) form.append("title", title);
     if (tags) tags.forEach((t) => form.append("tags", t));
-    const res = await fetch(`${API_BASE}/documents`, { method: "POST", body: form });
+    const res = await fetch(`${API_BASE}/documents`, {
+      method: "POST",
+      body: form,
+      headers: authHeaders(),
+    });
     if (!res.ok) throw await res.json().catch(() => ({ code: "internal_error", message: "" }));
     return (await res.json()) as { document_id: string; status: string };
   },

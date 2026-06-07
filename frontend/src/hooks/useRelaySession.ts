@@ -6,6 +6,12 @@ import { api } from "../api/client";
 import { WsTransport, type RelayTransport } from "../api/transport";
 import { MockEngine } from "../mock/engine";
 import { USE_MOCK, wsUrl } from "../config";
+
+// Token injector for WS URL. Set externally by AuthContext when USE_MOCK=false.
+let _wsGetToken: (() => string | null) | null = null;
+export function setWsTokenProvider(fn: () => string | null): void {
+  _wsGetToken = fn;
+}
 import type {
   Card,
   Lead,
@@ -106,11 +112,17 @@ export function useRelaySession(initialMode: Mode) {
         engineRef.current = engine;
         transport = engine;
       } else {
-        // Functional mode: create a session on the backend, then open its WS.
+        // Functional mode: create a session on the backend, then open its WS
+        // (passing the auth token as a connect param when present).
         try {
           const res = await api.createSession(initialMode);
           sessionId = res.session_id;
-          transport = new WsTransport(wsUrl(res.ws_url));
+          const rawWsUrl = wsUrl(res.ws_url);
+          const token = _wsGetToken?.();
+          const fullWsUrl = token
+            ? `${rawWsUrl}${rawWsUrl.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`
+            : rawWsUrl;
+          transport = new WsTransport(fullWsUrl);
         } catch (e) {
           if (disposed) return;
           const msg = (e as { message?: string })?.message ?? "request failed";

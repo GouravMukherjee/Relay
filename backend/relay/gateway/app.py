@@ -62,6 +62,7 @@ _ROUTE_MODULES: tuple[str, ...] = (
     "relay.gateway.routes.sessions",
     "relay.gateway.routes.query",
     "relay.gateway.routes.leads",
+    "relay.gateway.routes.customers",
     "relay.gateway.routes.account",
 )
 

@@ -1,20 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import type { RelaySessionState } from "../hooks/useRelaySession";
+import type { LiveSource, RelaySessionState } from "../hooks/useRelaySession";
 import { api } from "../api/client";
 import { useBackend } from "../backend";
 import { Waveform } from "../components/Waveform";
 import { RelayCard } from "../components/RelayCard";
 import { Icon } from "../components/Icon";
+import { CallTimer } from "../components/CallTimer";
 import { clock } from "../util";
 import { easeOut, fadeUp, iconHover, item, pressable } from "../motion";
 
 interface Props {
   state: RelaySessionState;
   onQuery: (text: string) => void;
+  onToggleMic: () => void;
+  onSetSource: (source: LiveSource) => void;
 }
 
-export function LiveView({ state, onQuery }: Props) {
+export function LiveView({ state, onQuery, onToggleMic, onSetSource }: Props) {
   const { call } = useBackend();
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -33,13 +36,6 @@ export function LiveView({ state, onQuery }: Props) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [state.utterances, state.partial]);
 
-  const onMic = () =>
-    state.sessionId &&
-    call("Join audio room", () => api.livekitToken(state.sessionId!), {
-      endpoint: `POST /sessions/${state.sessionId}/livekit-token`,
-      success: "Joined LiveKit room",
-    });
-
   const onUpload = (file: File) =>
     call("Upload document", () => api.uploadDocument(file, file.name), {
       endpoint: "POST /documents",
@@ -57,16 +53,63 @@ export function LiveView({ state, onQuery }: Props) {
       >
         <div className="callpanel-head">
           <div className="callpanel-head-row">
-            <h2 className="label-caps">Live Call</h2>
+            <h2 className="label-caps">
+              {state.liveSource === "phone" && state.callActive ? (
+                <span className="incoming-call">
+                  <span className="live-dot" />
+                  Incoming call
+                </span>
+              ) : (
+                "Live Call"
+              )}
+            </h2>
             <div className="call-status">
-              <span className="mono call-timer">{new Date().toTimeString().slice(0, 5)}</span>
-              <motion.button className="mic-btn" title="Join / toggle microphone" onClick={onMic} {...iconHover}>
-                <Icon name="mic" size={18} />
-                <span className="mic-dot" />
-              </motion.button>
+              <span className="mono call-timer">
+                <CallTimer startedAt={state.startedAt} />
+              </span>
+
+              {/* Source toggle: watch the inbound-phone demo room (default) or publish
+                  the browser mic (fallback). */}
+              <div className="source-toggle" role="group" aria-label="Live audio source">
+                <button
+                  className={`source-opt${state.liveSource === "phone" ? " active" : ""}`}
+                  onClick={() => onSetSource("phone")}
+                  title="Watch inbound phone calls"
+                >
+                  <Icon name="call" size={15} />
+                  Phone
+                </button>
+                <button
+                  className={`source-opt${state.liveSource === "mic" ? " active" : ""}`}
+                  onClick={() => onSetSource("mic")}
+                  title="Use this device's microphone"
+                >
+                  <Icon name="mic" size={15} />
+                  Mic
+                </button>
+              </div>
+
+              {state.liveSource === "mic" && (
+                <motion.button
+                  className={`mic-btn${state.micEnabled ? "" : " muted"}`}
+                  title={
+                    !state.micAvailable
+                      ? "Microphone unavailable"
+                      : state.micEnabled
+                        ? "Mute microphone"
+                        : "Un-mute microphone"
+                  }
+                  onClick={onToggleMic}
+                  disabled={!state.micAvailable}
+                  {...iconHover}
+                >
+                  <Icon name={state.micEnabled ? "mic" : "mic_off"} size={18} />
+                  <span className="mic-dot" />
+                </motion.button>
+              )}
             </div>
           </div>
-          <Waveform active={!!state.partial} />
+          <Waveform active={!!state.partial || (state.liveSource === "phone" && state.callActive)} />
           {/* Typed question — same retrieval→card path as voice, no mic needed.
               The reliable way to drive Live (and the demo safety net). */}
           <div className="ask-bar">

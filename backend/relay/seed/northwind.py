@@ -505,18 +505,20 @@ async def _seed_customer_memories(
 
     memories = [
         {
-            "kind": "fact",
+            "kind": "ticket",
             "text": (
-                "Customer Sarah Chen (Acme Corp, Growth tier) had a CRM export sync "
-                "issue resolved on Mar 12 2026 via OAuth re-authentication. "
-                "Ticket #1023."
+                "CRM export sync — resolved (Mar 12 2026). Sarah Chen (Acme Corp, Growth "
+                "plan) reported the Salesforce CRM export sync had stopped updating. Root "
+                "cause: OAuth token expiry after 90 days. Resolved by re-authenticating the "
+                "Salesforce integration from Settings → Integrations. Ticket #1023."
             ),
         },
         {
-            "kind": "fact",
+            "kind": "ticket",
             "text": (
-                "Acme Corp is on the Growth Plan. Sarah Chen is the primary contact. "
-                "Previous ticket: Onboarding setup (resolved Feb 2 2026)."
+                "Onboarding — resolved (Feb 2 2026). Initial workspace setup and document "
+                "ingestion configured for Acme Corp on the Growth plan. Sarah Chen is the "
+                "primary contact."
             ),
         },
     ]

@@ -1,16 +1,18 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { RelaySessionState } from "../hooks/useRelaySession";
 import { api } from "../api/client";
 import { useBackend } from "../backend";
 import { Waveform } from "../components/Waveform";
 import { Icon } from "../components/Icon";
+import { CallTimer } from "../components/CallTimer";
 import { clock, initials } from "../util";
 import { fadeUp, inView, item, pressable, staggerParent } from "../motion";
 
 interface Props {
   state: RelaySessionState;
   onRoute: () => void;
+  onQuery: (text: string) => void;
 }
 
 const QUALS: { key: "budget" | "authority" | "need" | "timeline"; label: string }[] = [
@@ -20,12 +22,20 @@ const QUALS: { key: "budget" | "authority" | "need" | "timeline"; label: string 
   { key: "timeline", label: "Timeline" },
 ];
 
-export function IntakeView({ state, onRoute }: Props) {
+export function IntakeView({ state, onRoute, onQuery }: Props) {
   const { call } = useBackend();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [text, setText] = useState("");
   const last = state.utterances.length - 1;
   const lead = state.lead;
   const routed = !!lead?.routed_to;
+
+  const submit = () => {
+    const t = text.trim();
+    if (!t) return;
+    onQuery(t);
+    setText("");
+  };
 
   const onBook = () =>
     lead &&
@@ -49,7 +59,9 @@ export function IntakeView({ state, onRoute }: Props) {
               <span className="live-dot" />
               Inbound Call
             </h2>
-            <span className="mono call-timer">{new Date().toTimeString().slice(0, 5)}</span>
+            <span className="mono call-timer">
+              <CallTimer startedAt={state.startedAt} />
+            </span>
           </div>
           <Waveform active={!!state.partial} />
         </div>
@@ -87,6 +99,21 @@ export function IntakeView({ state, onRoute }: Props) {
               <p className="utt-text">{state.partial.text}</p>
             </motion.div>
           )}
+        </div>
+
+        {/* Typed caller input — same extraction→scoring path as voice, no mic needed.
+            The reliable way to drive Intake (and the demo safety net). */}
+        <div className="ask-bar">
+          <Icon name="record_voice_over" size={16} />
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            placeholder="Type what the caller said — e.g. “I'm the VP of Eng, budget ~$50k/yr, need this by Q3”"
+          />
+          <motion.button className="ask-send" onClick={submit} title="Capture" {...pressable}>
+            <Icon name="send" size={16} />
+          </motion.button>
         </div>
       </section>
 

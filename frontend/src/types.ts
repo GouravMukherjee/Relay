@@ -34,6 +34,7 @@ export interface Utterance {
 
 export interface LeadQualifiers {
   budget?: string;
+  authority?: string;
   timeline?: string;
   need?: string;
   [k: string]: string | undefined;
@@ -52,6 +53,26 @@ export interface Lead {
   status: LeadStatus;
   routed_to: string | null;
   created_at: string;
+}
+
+// ── Customer (Desk mode) ──────────────────────────────────────────────────────
+// Additive to the base spec — Desk needs a customer + history for the CUSTOMER panel.
+
+export interface CustomerHistoryItem {
+  memory_id: string;
+  kind: string; // fact | summary | preference | ticket
+  text: string;
+  resolved: boolean;
+  created_at: string;
+}
+
+export interface CustomerProfile {
+  customer_id: string; // cus_…
+  name: string;
+  company?: string | null;
+  email?: string | null;
+  plan?: string | null;
+  history: CustomerHistoryItem[];
 }
 
 export interface DocumentRecord {
@@ -86,13 +107,21 @@ export type ServerEvent =
   | {
       type: "session.status";
       ts: string;
-      data: { status: "active" | "ended"; retrieval_backend: RetrievalBackend };
+      data: {
+        status: "active" | "ended";
+        retrieval_backend: RetrievalBackend;
+        // Inbound-phone indicator (additive): set when a SIP caller joins/leaves the
+        // demo room. call_kind is "sip" | "browser"; caller is the participant identity.
+        call_active?: boolean;
+        call_kind?: string;
+        caller?: string;
+      };
     }
   | { type: "lead.update"; ts: string; data: Lead } // Intake (not in base spec; additive)
   | { type: "error"; ts: string; data: { code: string; message: string } };
 
 export type ClientEvent =
   | { type: "mode.set"; data: { mode: Mode } }
-  | { type: "query.manual"; data: { text: string } }
+  | { type: "query.manual"; data: { text: string; customer_id?: string } }
   | { type: "card.pin"; data: { card_id: string } }
   | { type: "card.dismiss"; data: { card_id: string } };

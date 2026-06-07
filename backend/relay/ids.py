@@ -59,3 +59,18 @@ def new_id(prefix: str) -> str:
         A string like ``"doc_4a3f2e1c9b8d7a6f5e4c3b2a"``.
     """
     return f"{prefix}_{uuid4().hex[:24]}"
+
+
+def stable_session_id(room: str) -> str:
+    """Return a DETERMINISTIC session id derived from a LiveKit room name.
+
+    Used for the fixed inbound-phone demo room (``settings.livekit_demo_room``): the
+    agent worker and the gateway must agree on the same ``session_id`` so cards the
+    agent persists/broadcasts land on the exact WS channel the dashboard watches —
+    without the dashboard having created the session first. Same room name in, same
+    ``ses_…`` id out, in any process.
+    """
+    import hashlib
+
+    digest = hashlib.sha256(room.encode("utf-8")).hexdigest()[:24]
+    return f"ses_{digest}"

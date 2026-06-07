@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useRelaySession } from "./hooks/useRelaySession";
 import { useBackend } from "./backend";
-import { api } from "./api/client";
 import { easeOut } from "./motion";
 import { TopNav } from "./components/TopNav";
 import { Sidebar, type NavKey } from "./components/Sidebar";
@@ -26,8 +25,9 @@ interface Account {
 // ── Main dashboard ────────────────────────────────────────────────────────────
 
 function Dashboard({ account }: { account?: Account }) {
-  const { state, setMode, sendQuery, routeLead } = useRelaySession("live");
-  const { call, toast } = useBackend();
+  const { state, setMode, sendQuery, routeLead, toggleMic, restart, setLiveSource } =
+    useRelaySession("live");
+  const { toast } = useBackend();
   const [nav, setNav] = useState<NavKey>("dashboard");
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -45,12 +45,12 @@ function Dashboard({ account }: { account?: Account }) {
     setNav("dashboard");
   };
 
+  // New Session: restart the live session IN PLACE (new room, cleared transcript +
+  // cards + timer). Single-page — no new tab, the old session is torn down.
   const onNewAnalysis = () => {
     setNav("dashboard");
-    void call("New analysis", () => api.createSession(state.mode), {
-      endpoint: "POST /sessions",
-      success: "New session started",
-    });
+    restart();
+    toast("New session started", "success");
   };
 
   // Sidebar collapse state, remembered across reloads.
@@ -99,9 +99,18 @@ function Dashboard({ account }: { account?: Account }) {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.28, ease: easeOut }}
               >
-                {nav === "dashboard" && state.mode === "live" && <LiveView state={state} onQuery={sendQuery} />}
+                {nav === "dashboard" && state.mode === "live" && (
+                  <LiveView
+                    state={state}
+                    onQuery={sendQuery}
+                    onToggleMic={toggleMic}
+                    onSetSource={setLiveSource}
+                  />
+                )}
                 {nav === "dashboard" && state.mode === "desk" && <DeskView state={state} onQuery={sendQuery} />}
-                {nav === "dashboard" && state.mode === "intake" && <IntakeView state={state} onRoute={routeLead} />}
+                {nav === "dashboard" && state.mode === "intake" && (
+                  <IntakeView state={state} onRoute={routeLead} onQuery={sendQuery} />
+                )}
                 {nav === "knowledge" && <KnowledgeView />}
                 {nav === "transcripts" && <TranscriptsView />}
                 {nav === "team" && <TeamView />}

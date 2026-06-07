@@ -2,7 +2,15 @@
 // All bodies are JSON unless noted (document upload is multipart).
 
 import { API_BASE } from "../config";
-import type { Card, DocumentRecord, Lead, Mode, SessionInfo, Utterance } from "../types";
+import type {
+  Card,
+  CustomerProfile,
+  DocumentRecord,
+  Lead,
+  Mode,
+  SessionInfo,
+  Utterance,
+} from "../types";
 
 // Token provider: set this to a function that returns the current JWT so that
 // req() and uploadDocument can inject "Authorization: Bearer <token>".
@@ -99,6 +107,14 @@ export const api = {
       body: JSON.stringify({ mode, ...opts }),
     }),
 
+  // Inbound-phone demo: the fixed session the dashboard watches for SIP-call cards.
+  // Returns the deterministic session id + ws_url (always), plus a LiveKit room/token
+  // the rep can optionally join to publish the browser mic as a fallback source.
+  getDemoSession: () =>
+    req<{ session_id: string; ws_url: string; livekit_room: string; livekit_token?: string }>(
+      "/sessions/demo",
+    ),
+
   getSession: (id: string) => req<SessionInfo>(`/sessions/${id}`),
 
   endSession: (id: string) =>
@@ -112,6 +128,10 @@ export const api = {
   // ── Query (manual fallback / Desk) ───────────────────────────────────────────
   query: (body: { session_id?: string; mode: Mode; text: string; customer_id?: string }) =>
     req<{ card: Card | null }>("/query", { method: "POST", body: JSON.stringify(body) }),
+
+  // ── Customers (Desk) ─────────────────────────────────────────────────────────
+  listCustomers: () => req<{ customers: CustomerProfile[] }>("/customers"),
+  getCustomer: (id: string) => req<CustomerProfile>(`/customers/${id}`),
 
   // ── Leads (Intake) ───────────────────────────────────────────────────────────
   listLeads: () => req<{ leads: Lead[] }>("/leads"),

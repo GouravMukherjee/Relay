@@ -29,7 +29,8 @@ from relay.auth.deps import current_claims
 from relay.auth.jwt import Claims
 from relay.db.base import get_session
 from relay.db.models import Card, CardSource, Chunk, Document, Session, Utterance
-from relay.ids import new_id
+from relay.config import settings
+from relay.ids import new_id, stable_session_id
 from relay.schemas.account import (
     LiveKitTokenResponse,
     ReplyRequest,
@@ -40,6 +41,7 @@ from relay.schemas.cards import SessionCardsResponse, card_to_schema, source_fro
 from relay.schemas.sessions import (
     CreateSessionRequest,
     CreateSessionResponse,
+    DemoSessionResponse,
     EndSessionResponse,
     SessionInfo,
     SessionListResponse,
@@ -112,22 +114,32 @@ async def create_session(
     livekit_room = body.livekit_room or f"relay-{session_id}"
     if body.mode in ("live", "intake"):
         try:
-            from relay.adapters.livekit_tokens import ensure_room, mint_livekit_token
+            from relay.adapters.livekit_tokens import (
+                ensure_agent_dispatch,
+                ensure_room,
+                mint_livekit_token,
+            )
+
+            room_metadata = {
+                "session_id": session_id,
+                "org_id": str(org_id),
+                "mode": body.mode,
+                "customer_id": body.customer_id or "",
+            }
 
             # Stamp session context onto the room so the agent worker can read
             # org_id / mode / customer_id from room metadata (NOT from client msgs).
             try:
-                await ensure_room(
-                    livekit_room,
-                    {
-                        "session_id": session_id,
-                        "org_id": str(org_id),
-                        "mode": body.mode,
-                        "customer_id": body.customer_id or "",
-                    },
-                )
+                await ensure_room(livekit_room, room_metadata)
             except Exception as exc:  # noqa: BLE001 — best-effort; never block session start
                 logger.warning("LiveKit room ensure failed: %s", exc)
+
+            # The agent worker is a NAMED agent (explicit dispatch only), so we must
+            # dispatch it to this session's room — automatic dispatch is off. Best-effort.
+            try:
+                await ensure_agent_dispatch(livekit_room, room_metadata)
+            except Exception as exc:  # noqa: BLE001 — best-effort; never block session start
+                logger.warning("LiveKit agent dispatch failed: %s", exc)
 
             livekit_token = mint_livekit_token(
                 room=livekit_room,
@@ -174,6 +186,76 @@ async def list_sessions(
         session_infos.append(session_to_schema(s, card_count=cnt))
 
     return SessionListResponse(sessions=session_infos)
+
+
+@router.get(
+    "/sessions/demo",
+    response_model=DemoSessionResponse,
+    summary="Get (or provision) the fixed inbound-phone demo session",
+)
+async def get_demo_session(
+    claims: Claims = Depends(current_claims),
+    db: AsyncSession = Depends(get_session),
+) -> DemoSessionResponse:
+    """Return the demo session the dashboard watches for inbound phone calls.
+
+    Ensures (idempotently): the demo Session row exists, the LiveKit demo room exists
+    with session metadata, and the named agent is dispatched to it. Returns a LiveKit
+    token so the rep can optionally join the room and publish the browser mic as a
+    fallback audio source. The ``session_id`` is DETERMINISTIC (derived from the room
+    name) so it matches the id the agent worker uses for the same room.
+    """
+    room = settings.livekit_demo_room or "relay-demo"
+    org_id = claims.org_id
+    session_id = stable_session_id(room)
+
+    # Ensure the demo Session row (cards persist with this session_id FK).
+    existing = await db.get(Session, session_id)
+    if existing is None:
+        db.add(
+            Session(
+                id=session_id,
+                organization_id=org_id,
+                mode="live",
+                livekit_room=room,
+                status="active",
+                started_at=datetime.now(timezone.utc),
+            )
+        )
+        # commit handled by get_session
+
+    metadata = {
+        "session_id": session_id,
+        "org_id": str(org_id),
+        "mode": "live",
+        "customer_id": "",
+    }
+
+    livekit_token: str | None = None
+    try:
+        from relay.adapters.livekit_tokens import (
+            ensure_agent_dispatch,
+            ensure_room,
+            mint_livekit_token,
+        )
+
+        try:
+            await ensure_room(room, metadata)
+            await ensure_agent_dispatch(room, metadata)
+        except Exception as exc:  # noqa: BLE001 — best-effort; watching still works
+            logger.warning("demo room/dispatch setup failed: %s", exc)
+
+        livekit_token = mint_livekit_token(room=room, identity=claims.user_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("demo LiveKit token mint failed: %s", exc)
+
+    logger.info("session.demo session_id=%s room=%s org_id=%s", session_id, room, org_id)
+    return DemoSessionResponse(
+        session_id=session_id,
+        ws_url=f"/ws/sessions/{session_id}",
+        livekit_room=room,
+        livekit_token=livekit_token,
+    )
 
 
 @router.get(

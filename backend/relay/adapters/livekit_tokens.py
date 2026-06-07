@@ -123,3 +123,60 @@ async def ensure_room(room: str, metadata: dict[str, str]) -> None:
         logger.info("livekit_room_ensured", extra={"room": room})
     finally:
         await lkapi.aclose()
+
+
+async def ensure_agent_dispatch(
+    room: str,
+    metadata: dict[str, str],
+    agent_name: str | None = None,
+) -> None:
+    """Explicitly dispatch the named agent worker to *room* (idempotent).
+
+    With ``WorkerOptions.agent_name`` set, the worker is dispatched ONLY on demand —
+    automatic dispatch is off — so the gateway must request a dispatch for every room
+    it wants the agent in (each browser session room, and the fixed demo room). This
+    mirrors the SIP pattern (``room_config.agents``) for the non-SIP paths.
+
+    Idempotent: if a dispatch for ``agent_name`` already exists in the room, no second
+    one is created (avoids spawning duplicate agent instances on dashboard remounts).
+    Best-effort — callers wrap in try/except and never block session creation on it.
+
+    Args:
+        room:       Target LiveKit room name.
+        metadata:   Stamped into the dispatch (the agent reads it from ``ctx.job.metadata``).
+        agent_name: Dispatch name to target. Defaults to ``settings.livekit_agent_name``.
+    """
+    if not settings.livekit_api_key or not settings.livekit_api_secret:
+        raise RuntimeError("ensure_agent_dispatch requires LIVEKIT_API_KEY and LIVEKIT_API_SECRET.")
+
+    name = agent_name or settings.livekit_agent_name
+    if not name:
+        return  # no named agent configured -> nothing to dispatch
+
+    from livekit import api  # pypi: livekit-api
+
+    lkapi = api.LiveKitAPI(
+        url=settings.livekit_url or None,
+        api_key=settings.livekit_api_key,
+        api_secret=settings.livekit_api_secret,
+    )
+    try:
+        # Skip if an identical dispatch already exists for this room.
+        try:
+            existing = await lkapi.agent_dispatch.list_dispatch(room_name=room)
+            if any(getattr(d, "agent_name", None) == name for d in existing):
+                logger.info("livekit_dispatch_exists", extra={"room": room, "agent": name})
+                return
+        except Exception:  # noqa: BLE001 — listing is an optimisation, not required
+            pass
+
+        await lkapi.agent_dispatch.create_dispatch(
+            api.CreateAgentDispatchRequest(
+                agent_name=name,
+                room=room,
+                metadata=json.dumps(metadata),
+            )
+        )
+        logger.info("livekit_agent_dispatched", extra={"room": room, "agent": name})
+    finally:
+        await lkapi.aclose()

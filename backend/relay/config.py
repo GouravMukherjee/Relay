@@ -122,6 +122,40 @@ class Settings(BaseSettings):
             "Passed to AgentSession(stt=...)."
         ),
     )
+    livekit_agent_name: str = Field(
+        default="relay-agent",
+        description=(
+            "Dispatch name the agent worker registers with (WorkerOptions.agent_name). "
+            "Setting it requires EXPLICIT dispatch — the gateway dispatches this name to "
+            "each session room, and SIP dispatch rules target it for inbound phone calls."
+        ),
+    )
+    livekit_demo_room: str = Field(
+        default="relay-demo",
+        description=(
+            "Fixed LiveKit room for the inbound-phone demo. The agent is dispatched here "
+            "and transcribes whoever joins (a SIP caller OR the rep's browser mic); the "
+            "rep dashboard's Live view watches this room by default so cards stream in "
+            "with no manual room selection."
+        ),
+    )
+    stt_min_endpointing_delay: float = Field(
+        default=0.2,
+        description=(
+            "Seconds of trailing silence the agent waits before finalizing a turn "
+            "(EndpointingOptions.min_delay). LiveKit's default is 0.5s and is additive "
+            "on top of the STT's own endpointing — lowering it makes finals fire faster "
+            "after the speaker stops, cutting perceived latency."
+        ),
+    )
+    stt_max_endpointing_delay: float = Field(
+        default=1.5,
+        description=(
+            "Upper bound (seconds) the agent waits before forcing turn end "
+            "(EndpointingOptions.max_delay). Default is 3.0s; lowered so a trailing "
+            "pause never stalls a card."
+        ),
+    )
 
     # ------------------------------------------------------------------
     # Unsiloed (document parsing)
@@ -162,6 +196,23 @@ class Settings(BaseSettings):
         description=(
             "Comma-separated provider-prefixed model ids to try (in order) if the primary "
             "tfy_model call fails — automatic LLM failover, e.g. 'qwen/qwen-plus'."
+        ),
+    )
+    tfy_fast_model: str = Field(
+        default="anthropic/claude-haiku",
+        description=(
+            "Fast, low-latency model used ONLY for live card synthesis (cards are 1–2 "
+            "sentences, so a small model is both faster and cheaper). Everything else "
+            "stays on tfy_model. If the fast model fails, synthesis falls back to "
+            "tfy_model and the configured fallbacks. "
+            "# TODO: confirm <TrueFoundry> API — exact Haiku gateway id."
+        ),
+    )
+    card_max_tokens: int = Field(
+        default=150,
+        description=(
+            "Max output tokens for live card synthesis. Cards are 1–2 cited sentences, "
+            "so a tight cap keeps latency low and discourages rambling answers."
         ),
     )
 

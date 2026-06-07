@@ -37,6 +37,7 @@ from starlette.websockets import WebSocketState
 from relay.auth.jwt import AuthError, Claims, verify_token
 from relay.auth.rls import set_current_claims
 from relay.config import settings
+from relay.ids import new_id
 from relay.logging import get_logger
 from relay.schemas.common import build_event
 
@@ -255,6 +256,11 @@ async def _handle_query_manual(
     if not text or not text.strip():
         return
 
+    # Stream tokens straight to this session's sockets as they arrive: the first
+    # token paints immediately instead of waiting for the full completion.
+    async def _emit(event_type: str, data: dict[str, Any]) -> None:
+        await hub.broadcast(session_id, build_event(event_type, data, _now_iso()))
+
     # The Orchestrator persists the Card/CardSource rows, so it needs a DB session.
     # We open a privileged session here (the WS task has no request-scoped session) and
     # the Orchestrator's denormalised ``organization_id`` writes keep tenant scoping.
@@ -269,6 +275,7 @@ async def _handle_query_manual(
                 mode=mode,
                 query_text=text,
                 customer_id=customer_id,
+                emit=_emit,
             )
     except _OrchestratorUnavailable as exc:
         logger.warning("orchestrator unavailable for query.manual", extra={"error": str(exc)})
@@ -293,49 +300,145 @@ async def _handle_query_manual(
         )
         return
 
-    if card is None:
-        # No grounding -> silent. The contract surfaces this as the absence of a card.
+    # The card (and its sources) was already streamed to the client via _emit
+    # (card.new + card.update). A None result is the grounded-or-silent contract:
+    # no card was produced, and nothing was emitted. Either way, nothing to do here.
+    return
+
+
+async def _handle_intake_turn(
+    *,
+    session_id: str,
+    claims: Claims,
+    text: str,
+    state: dict[str, Any],
+) -> None:
+    """Accumulate an Intake transcript turn, re-extract the lead, broadcast lead.update.
+
+    Best-effort and silent on failure: if extraction yields nothing yet (too little
+    said), no lead card appears — consistent with the grounded-or-silent ethos.
+    """
+    if not text or not text.strip():
         return
 
-    payload = card.model_dump() if hasattr(card, "model_dump") else dict(card)
-    await hub.broadcast(session_id, build_event("card.new", payload, _now_iso()))
+    transcript: list[str] = state.setdefault("intake_transcript", [])
+    transcript.append(text.strip())
+    # Echo the turn into the transcript pane so the operator sees what was captured.
+    await hub.broadcast(
+        session_id,
+        build_event(
+            "transcript.final",
+            {"utterance_id": new_id("utt"), "speaker": "prospect", "text": text.strip()},
+            _now_iso(),
+        ),
+    )
+
+    async def _emit(event_type: str, data: dict[str, Any]) -> None:
+        await hub.broadcast(session_id, build_event(event_type, data, _now_iso()))
+
+    try:
+        _ensure_adapters()
+    except _OrchestratorUnavailable as exc:
+        logger.warning("intake adapters unavailable", extra={"error": str(exc)})
+        return
+
+    from relay.orchestrator.intake import extract_and_store
+
+    try:
+        await extract_and_store(
+            session_id=session_id,
+            org_id=claims.org_id,
+            transcript=" ".join(transcript[-40:]),
+            llm=_llm_client,
+            emit=_emit,
+        )
+    except Exception as exc:  # noqa: BLE001 — never break the socket on extraction error
+        logger.warning("intake extraction failed", extra={"error": str(exc), "session_id": session_id})
 
 
 class _OrchestratorUnavailable(RuntimeError):
     """Raised when the Orchestrator/adapters cannot be constructed (missing creds)."""
 
 
-def _build_orchestrator(db):
-    """Construct the Orchestrator with the composite retrieval + LLM adapters.
+# Process-wide, session-independent singletons. The LLM client owns a pooled httpx
+# connection (keep-alive) — reusing it across queries keeps the TFY gateway connection
+# warm so the latency-critical card path never pays a fresh TLS handshake. Only the
+# per-call Orchestrator (which binds a DB session) is constructed each query.
+_llm_client: Any | None = None
+_retrieval_service: Any | None = None
+_memory_service: Any | None = None
+_adapters_ready = False
 
-    Bound to the supplied DB session so persisted Card/CardSource rows are written.
-    Imported lazily (and tolerantly) so app/ws import never hard-depends on packages that
-    are still under construction. Tests monkeypatch this function to inject a deterministic
-    in-memory Orchestrator. Raises :class:`_OrchestratorUnavailable` if a piece is missing.
-    """
+
+def _ensure_adapters() -> None:
+    """Build (once) the shared LLM + retrieval + memory adapters, or raise."""
+    global _llm_client, _retrieval_service, _memory_service, _adapters_ready
+    if _adapters_ready:
+        return
     try:
         from relay.adapters.llm_tfy import TfyLLMClient
-        from relay.orchestrator.synth import Orchestrator
         from relay.retrieval.service import CompositeRetrievalService
 
+        _retrieval_service = CompositeRetrievalService.from_settings()
+        _llm_client = TfyLLMClient()
+
         # Desk-mode per-customer memory (Moss-backed, built-in embeddings). Best-effort:
-        # if it can't be built, proceed without memory (it's optional context, never grounding).
-        memory = None
+        # if it can't be built, proceed without memory (optional context, never grounding).
         try:
             from relay.memory.moss_memory import MossMemoryService
 
-            memory = MossMemoryService()
+            _memory_service = MossMemoryService()
         except Exception as exc:  # noqa: BLE001
             logger.info("memory service unavailable; Desk runs without it", extra={"error": str(exc)})
+            _memory_service = None
 
-        return Orchestrator(
-            retrieval=CompositeRetrievalService.from_settings(),
-            llm=TfyLLMClient(),
-            session=db,
-            memory=memory,
-        )
+        _adapters_ready = True
     except Exception as exc:  # noqa: BLE001 — missing creds / adapters under construction
         raise _OrchestratorUnavailable(str(exc)) from exc
+
+
+def _build_orchestrator(db):
+    """Construct the Orchestrator with the composite retrieval + LLM adapters.
+
+    The LLM/retrieval/memory adapters are process-wide singletons (built once, reused
+    so the gateway connection stays warm); only the Orchestrator — which binds the
+    supplied DB session for Card/CardSource writes — is built per call. Tests
+    monkeypatch this function to inject a deterministic in-memory Orchestrator.
+    Raises :class:`_OrchestratorUnavailable` if a piece is missing.
+    """
+    _ensure_adapters()
+    from relay.orchestrator.synth import Orchestrator
+
+    return Orchestrator(
+        retrieval=_retrieval_service,
+        llm=_llm_client,
+        session=db,
+        memory=_memory_service,
+    )
+
+
+def get_llm_client() -> Any:
+    """Return the shared LLM client singleton (building adapters if needed)."""
+    _ensure_adapters()
+    return _llm_client
+
+
+async def prewarm_llm() -> None:
+    """Best-effort: build the shared adapters and open the gateway keep-alive
+    connection so the first live query doesn't pay the TLS/handshake cost.
+    Safe to call on session/agent start; never raises.
+    """
+    try:
+        _ensure_adapters()
+    except _OrchestratorUnavailable as exc:
+        logger.info("prewarm skipped (adapters unavailable)", extra={"error": str(exc)})
+        return
+    prewarm = getattr(_llm_client, "prewarm", None)
+    if prewarm is not None:
+        try:
+            await prewarm()
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("llm prewarm failed", extra={"error": str(exc)})
 
 
 async def _process_client_event(
@@ -364,13 +467,21 @@ async def _process_client_event(
     if etype == "query.manual":
         text = data.get("text")
         if isinstance(text, str):
-            await _handle_query_manual(
-                session_id=session_id,
-                claims=claims,
-                mode=state.get("mode", "live"),
-                text=text,
-                customer_id=data.get("customer_id"),
-            )
+            mode = state.get("mode", "live")
+            if mode == "intake":
+                # In Intake, a typed message is a transcript turn — accumulate it and
+                # re-extract/score the lead rather than synthesising a grounded card.
+                await _handle_intake_turn(
+                    session_id=session_id, claims=claims, text=text, state=state
+                )
+            else:
+                await _handle_query_manual(
+                    session_id=session_id,
+                    claims=claims,
+                    mode=mode,
+                    text=text,
+                    customer_id=data.get("customer_id"),
+                )
         return
 
     if etype in ("card.pin", "card.dismiss"):
@@ -428,6 +539,10 @@ async def session_ws(
     await websocket.accept()
     await hub.register(session_id, websocket)
 
+    # Warm the LLM gateway connection in the background so the first manual query
+    # doesn't pay the TLS handshake. Never blocks the handshake; never raises.
+    asyncio.create_task(prewarm_llm())
+
     # Determine which retrieval backend is currently primary for the status event.
     backend = _current_retrieval_backend()
     await websocket.send_json(
@@ -476,4 +591,4 @@ def _current_retrieval_backend() -> str:
     return "pgvector"
 
 
-__all__ = ["WsHub", "hub", "get_hub", "router", "session_ws"]
+__all__ = ["WsHub", "hub", "get_hub", "router", "session_ws", "prewarm_llm"]

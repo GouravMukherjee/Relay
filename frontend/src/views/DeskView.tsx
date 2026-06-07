@@ -4,11 +4,13 @@ import type { RelaySessionState } from "../hooks/useRelaySession";
 import { api } from "../api/client";
 import { useBackend } from "../backend";
 import { Icon } from "../components/Icon";
-import { easeOut, fadeUp, iconHover, inView, pressable } from "../motion";
+import { initials } from "../util";
+import { easeOut, fadeUp, iconHover, inView, item, pressable, staggerParent } from "../motion";
+import type { CustomerProfile } from "../types";
 
 interface Props {
   state: RelaySessionState;
-  onQuery: (text: string) => void;
+  onQuery: (text: string, opts?: { customer_id?: string }) => void;
 }
 
 export function DeskView({ state, onQuery }: Props) {
@@ -16,6 +18,7 @@ export function DeskView({ state, onQuery }: Props) {
   const [text, setText] = useState("");
   const [editing, setEditing] = useState(false);
   const [reply, setReply] = useState("");
+  const [customer, setCustomer] = useState<CustomerProfile | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const resolution = state.cards[0];
@@ -25,6 +28,23 @@ export function DeskView({ state, onQuery }: Props) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [state.utterances, state.partial]);
 
+  // Link the seeded customer (Sarah Chen / Acme Corp) to this Desk session so the
+  // CUSTOMER panel populates and queries can pull her history/memory.
+  useEffect(() => {
+    let alive = true;
+    api
+      .listCustomers()
+      .then((res) => {
+        if (alive) setCustomer(res.customers[0] ?? null);
+      })
+      .catch(() => {
+        /* no customer seeded — panel falls back to the empty state */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   // Keep the editable reply in sync with the latest suggested resolution.
   useEffect(() => {
     if (resolution) setReply(resolution.answer);
@@ -33,7 +53,7 @@ export function DeskView({ state, onQuery }: Props) {
   const submit = () => {
     const t = text.trim();
     if (!t) return;
-    onQuery(t);
+    onQuery(t, customer ? { customer_id: customer.customer_id } : undefined);
     setText("");
   };
 
@@ -124,13 +144,46 @@ export function DeskView({ state, onQuery }: Props) {
             <div className="section-label label-caps" style={{ paddingBottom: 16 }}>
               Customer
             </div>
-            <div className="empty-state" style={{ padding: 16 }}>
-              <Icon name="person" size={32} />
-              <div className="small">
-                No customer linked to this session. Their profile &amp; recent tickets appear here once a
-                customer is matched.
+            {customer ? (
+              <>
+                <div className="lead-head" style={{ paddingBottom: 4 }}>
+                  <div className="lead-avatar">{initials(customer.name)}</div>
+                  <div className="lead-id">
+                    <h3>{customer.name}</h3>
+                    <div className="sub">
+                      {customer.company}
+                      {customer.plan ? ` · ${customer.plan} plan` : ""}
+                    </div>
+                  </div>
+                </div>
+                <div className="tickets-label label-caps" style={{ marginTop: 12 }}>
+                  Recent tickets
+                </div>
+                {customer.history.length === 0 ? (
+                  <div className="small" style={{ paddingTop: 6 }}>No past tickets.</div>
+                ) : (
+                  <motion.div variants={staggerParent(0.06)} initial="hidden" animate="show">
+                    {customer.history.map((h) => (
+                      <motion.div className="ticket-row" key={h.memory_id} variants={item}>
+                        <span className={`ticket-status ${h.resolved ? "resolved" : "open"}`}>
+                          <Icon name={h.resolved ? "check_circle" : "schedule"} size={14} fill={h.resolved} />
+                          {h.resolved ? "Resolved" : "Open"}
+                        </span>
+                        <span className="ticket-text">{h.text}</span>
+                      </motion.div>
+                    ))}
+                  </motion.div>
+                )}
+              </>
+            ) : (
+              <div className="empty-state" style={{ padding: 16 }}>
+                <Icon name="person" size={32} />
+                <div className="small">
+                  No customer linked to this session. Their profile &amp; recent tickets appear here once a
+                  customer is matched.
+                </div>
               </div>
-            </div>
+            )}
           </motion.div>
 
           {resolution ? (

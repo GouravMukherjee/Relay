@@ -627,8 +627,113 @@ input {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--primary-container);
+  background: #10b981; /* emerald — live/recording */
   border: 1px solid var(--surface-container-lowest);
+}
+/* Muted: dim the icon and turn the live dot grey. */
+.mic-btn.muted .ms {
+  color: var(--on-surface-variant);
+  opacity: 0.7;
+}
+.mic-btn.muted .mic-dot {
+  background: var(--outline-variant);
+}
+.mic-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.mic-btn:disabled .mic-dot {
+  display: none;
+}
+
+/* Desk — customer ticket history */
+.ticket-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+  border-top: 1px solid var(--outline-variant);
+}
+.ticket-row:first-of-type {
+  border-top: none;
+}
+.ticket-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  width: fit-content;
+}
+.ticket-status.resolved {
+  color: #10b981;
+}
+.ticket-status.open {
+  color: var(--on-surface-variant);
+}
+.ticket-text {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--on-surface-variant);
+}
+
+/* Live source toggle (Phone watch / browser Mic) */
+.source-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--r-full);
+  background: var(--surface-container);
+  border: 1px solid var(--outline-variant);
+}
+.source-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--r-full);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--on-surface-variant);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.source-opt.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+/* Incoming-call indicator */
+.incoming-call {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #10b981;
+  font-weight: 700;
+}
+.incoming-call .live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6);
+  animation: relay-call-pulse 1.4s infinite;
+}
+@keyframes relay-call-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
 }
 
 /* Waveform */

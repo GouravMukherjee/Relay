@@ -42,6 +42,20 @@ class CreateSessionResponse(BaseModel):
     livekit_token: str | None = None
 
 
+class DemoSessionResponse(BaseModel):
+    """GET /sessions/demo response — the fixed inbound-phone demo session.
+
+    The dashboard's Live view uses this to WATCH the demo room: it connects its WS to
+    ``session_id`` (where the agent broadcasts cards for the inbound call) and may
+    optionally join ``livekit_room`` with ``livekit_token`` to publish the browser mic
+    as a fallback audio source.
+    """
+    session_id: str
+    ws_url: str
+    livekit_room: str
+    livekit_token: str | None = None
+
+
 class EndSessionResponse(BaseModel):
     """200 response for POST /sessions/{session_id}/end."""
     status: Literal["ended"] = "ended"

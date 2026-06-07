@@ -68,7 +68,7 @@ export function KnowledgeView() {
       className={`section-page${dragActive ? " drag-active" : ""}`}
       onDragOver={(e) => {
         e.preventDefault();
-        setDragActive(true);
+        if (!dragActive) setDragActive(true);
       }}
       onDragLeave={(e) => {
         e.preventDefault();

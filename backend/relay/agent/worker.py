@@ -556,7 +556,14 @@ def _resolve_speaker(ctx: JobContext) -> str:
 # ---------------------------------------------------------------------------
 
 # Exposed for import by tests or by ``python -m relay.agent.worker``.
-worker_options = WorkerOptions(entrypoint_fnc=entrypoint)
+# Pass LiveKit connection from settings (loaded from .env by pydantic-settings) so the
+# worker doesn't depend on the vars being exported into the process environment.
+worker_options = WorkerOptions(
+    entrypoint_fnc=entrypoint,
+    ws_url=settings.livekit_url or None,
+    api_key=settings.livekit_api_key or None,
+    api_secret=settings.livekit_api_secret or None,
+)
 
 if __name__ == "__main__":
     # Usage:

@@ -16,13 +16,14 @@ interface Props {
   mode: Mode;
   onMode: (m: Mode) => void;
   onSettings: () => void;
+  onAccount: () => void;
   onToggleSidebar: () => void;
   collapsed: boolean;
   email: string | null;
   onSignOut?: () => void;
 }
 
-export function TopNav({ mode, onMode, onSettings, onToggleSidebar, collapsed, email, onSignOut }: Props) {
+export function TopNav({ mode, onMode, onSettings, onAccount, onToggleSidebar, collapsed, email, onSignOut }: Props) {
   const { call } = useBackend();
 
   return (
@@ -74,7 +75,7 @@ export function TopNav({ mode, onMode, onSettings, onToggleSidebar, collapsed, e
           <motion.button className="nav-icon" title="Settings" onClick={onSettings} {...iconHover}>
             <Icon name="settings" size={22} />
           </motion.button>
-          <AccountMenu email={email} onSignOut={onSignOut} />
+          <AccountMenu email={email} onSignOut={onSignOut} onAccount={onAccount} />
         </div>
       </div>
     </motion.nav>

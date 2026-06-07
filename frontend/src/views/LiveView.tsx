@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { RelaySessionState } from "../hooks/useRelaySession";
 import { api } from "../api/client";
@@ -7,17 +7,26 @@ import { Waveform } from "../components/Waveform";
 import { RelayCard } from "../components/RelayCard";
 import { Icon } from "../components/Icon";
 import { clock } from "../util";
-import { easeOut, fadeUp, iconHover, item } from "../motion";
+import { easeOut, fadeUp, iconHover, item, pressable } from "../motion";
 
 interface Props {
   state: RelaySessionState;
+  onQuery: (text: string) => void;
 }
 
-export function LiveView({ state }: Props) {
+export function LiveView({ state, onQuery }: Props) {
   const { call } = useBackend();
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [ask, setAsk] = useState("");
   const last = state.utterances.length - 1;
+
+  const submitAsk = () => {
+    const t = ask.trim();
+    if (!t) return;
+    onQuery(t);
+    setAsk("");
+  };
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -58,6 +67,20 @@ export function LiveView({ state }: Props) {
             </div>
           </div>
           <Waveform active={!!state.partial} />
+          {/* Typed question — same retrieval→card path as voice, no mic needed.
+              The reliable way to drive Live (and the demo safety net). */}
+          <div className="ask-bar">
+            <Icon name="search" size={16} />
+            <input
+              value={ask}
+              onChange={(e) => setAsk(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submitAsk()}
+              placeholder="Ask a question — e.g. “What's your uptime SLA?”"
+            />
+            <motion.button className="ask-send" onClick={submitAsk} title="Ask" {...pressable}>
+              <Icon name="send" size={16} />
+            </motion.button>
+          </div>
         </div>
 
         <div className="transcript scroll" ref={scrollRef}>

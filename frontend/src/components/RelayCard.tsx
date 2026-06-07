@@ -4,7 +4,6 @@ import type { Card } from "../types";
 import { Icon } from "./Icon";
 import { easeOut } from "../motion";
 import { api } from "../api/client";
-import { USE_MOCK } from "../config";
 
 // Latency counts up to its value on mount — turns a static number into a visible
 // "resolved in <500ms" moment, in keeping with the real-time product story.
@@ -46,7 +45,6 @@ export function RelayCard({ card, featured, autoSpeak }: Props) {
 
   // Whisper-back: synthesize the answer via MiniMax and play it. No-op in demo mode.
   const speak = async () => {
-    if (USE_MOCK) return;
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
@@ -71,7 +69,7 @@ export function RelayCard({ card, featured, autoSpeak }: Props) {
 
   // Auto-play once when read-aloud mode is on and this card appears.
   useEffect(() => {
-    if (autoSpeak && !USE_MOCK) void speak();
+    if (autoSpeak) void speak();
     return () => {
       audioRef.current?.pause();
       audioRef.current = null;
@@ -92,7 +90,7 @@ export function RelayCard({ card, featured, autoSpeak }: Props) {
       <div className="answer-top">
         <h3 className="answer-title">{card.title ?? card.trigger_text}</h3>
         <div className="answer-actions">
-          {!USE_MOCK && (
+          {(
             <motion.button
               className={`copy-btn${speaking ? " active" : ""}`}
               onClick={() => void speak()}

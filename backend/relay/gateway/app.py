@@ -38,23 +38,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from relay.config import settings
 from relay.logging import get_logger, set_request_id
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "https://https://lepmbgtxjduuoiwvdaww.supabase.co",                                    # local dev
-        "https://relay-pg1psok2k-cyr0zxs-projects.vercel.app",    # your vercel preview
-        "https://api.riyanshomelab.com",
-        "https://relay-omega-five.vercel.app",                      # prod when you have it
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 logger = get_logger("relay.gateway.app")
 
 API_PREFIX = "/api/v1"

@@ -91,7 +91,7 @@ def _get_composite_retrieval() -> Any:
     """Build a CompositeRetrievalService if adapters are available."""
     try:
         from relay.retrieval.service import CompositeRetrievalService  # type: ignore[import-untyped]
-        return CompositeRetrievalService()
+        return CompositeRetrievalService.from_settings()
     except Exception as exc:
         logger.warning("Could not build CompositeRetrievalService: %s", exc)
         return None
@@ -170,25 +170,8 @@ class RelayAgent:
         self._retrieval_backend: str = "moss"
         self._synthesis_lock: asyncio.Lock = asyncio.Lock()
         self._hub = _get_hub()
-
-        # Build the Orchestrator lazily once to avoid heavy adapter init at import.
-        OrchestratorCls = _get_orchestrator_class()
-        if OrchestratorCls is not None:
-            retrieval = _get_composite_retrieval()
-            llm = _get_llm_client()
-            if retrieval is not None and llm is not None:
-                self._orchestrator = OrchestratorCls(
-                    retrieval=retrieval,
-                    llm=llm,
-                )
-            else:
-                self._orchestrator = None
-                logger.warning(
-                    "session=%s: Orchestrator disabled (retrieval or LLM unavailable)",
-                    session_id,
-                )
-        else:
-            self._orchestrator = None
+        # The Orchestrator needs a DB session (to persist Card/CardSource), so it is
+        # built per-synthesis inside a privileged_session — see _synthesise_and_broadcast.
 
     # ------------------------------------------------------------------
     # Event handlers (called from AgentSession event callbacks)
@@ -248,12 +231,6 @@ class RelayAgent:
         If a second trigger fires while a synthesis is already running, it is
         dropped — the live-path latency budget takes priority over queuing.
         """
-        if self._orchestrator is None:
-            logger.debug(
-                "session=%s: synthesis skipped (no orchestrator)", self._session_id
-            )
-            return
-
         if self._synthesis_lock.locked():
             logger.debug(
                 "session=%s: synthesis already in-flight, dropping query %r",
@@ -271,13 +248,27 @@ class RelayAgent:
             try:
                 t_start = asyncio.get_event_loop().time()
 
-                card = await self._orchestrator.synthesize(
-                    session_id=self._session_id,
-                    org_id=self._org_id,
-                    mode=self._mode,
-                    query_text=query_text,
-                    customer_id=self._customer_id,
-                )
+                # Build the orchestrator per call inside a privileged DB session (mirrors
+                # the manual-query path in relay.gateway.ws). Reuses the tolerant builder
+                # so adapter/cred issues surface as a clean error rather than crashing.
+                from relay.db.base import privileged_session
+                from relay.gateway.ws import _build_orchestrator, _OrchestratorUnavailable
+
+                try:
+                    async with privileged_session() as db:
+                        orchestrator = _build_orchestrator(db)
+                        card = await orchestrator.synthesize(
+                            session_id=self._session_id,
+                            org_id=self._org_id,
+                            mode=self._mode,
+                            query_text=query_text,
+                            customer_id=self._customer_id,
+                        )
+                except _OrchestratorUnavailable as exc:
+                    logger.warning(
+                        "session=%s: orchestrator unavailable: %s", self._session_id, exc
+                    )
+                    return
 
                 if card is None:
                     # Grounding guard: no relevant chunk — stay silent.
@@ -404,6 +395,15 @@ async def entrypoint(ctx: JobContext) -> None:  # noqa: C901
         }
     """
     await ctx.connect()
+
+    # Enable the Redis-backed hub so cards/transcripts broadcast from THIS (agent)
+    # process reach browser sockets registered on the gateway process.
+    hub = _get_hub()
+    if hub is not None:
+        try:
+            await hub.start_redis()
+        except Exception as exc:  # noqa: BLE001 — degrade to local-only (won't reach browser)
+            logger.warning("agent: hub.start_redis failed: %s", exc)
 
     # ------------------------------------------------------------------
     # Parse room metadata → session context

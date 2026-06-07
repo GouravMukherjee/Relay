@@ -26,6 +26,8 @@ Client -> server events handled here: ``mode.set``, ``query.manual``, ``card.pin
 from __future__ import annotations
 
 import asyncio
+import json
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -68,9 +70,78 @@ class WsHub:
     the fan-out.
     """
 
+    # Redis channel all processes publish/subscribe on for cross-process fan-out.
+    _REDIS_CHANNEL = "relay:ws"
+
     def __init__(self) -> None:
         self._sessions: dict[str, set[WebSocket]] = {}
         self._lock = asyncio.Lock()
+        # Cross-process pub/sub (optional). Enabled by start_redis(); when disabled the
+        # hub is purely in-process (tests, single-process dev).
+        self._origin = uuid.uuid4().hex  # identifies THIS process's own publishes
+        self._redis: Any | None = None
+        self._pubsub: Any | None = None
+        self._sub_task: asyncio.Task | None = None
+
+    # ------------------------------------------------------------------
+    # Cross-process pub/sub (Redis)
+    # ------------------------------------------------------------------
+    async def start_redis(self) -> None:
+        """Connect the Redis publisher + subscriber so broadcasts cross processes.
+
+        Idempotent. Called from the gateway lifespan and the agent worker entrypoint.
+        The agent process publishes (it holds no browser sockets); the gateway process
+        publishes AND subscribes (its subscriber delivers agent-published events to the
+        browser sockets it owns). Messages tagged with this process's own origin are
+        skipped on receipt to avoid double-delivery.
+        """
+        if self._redis is not None:
+            return
+        import redis.asyncio as aioredis
+
+        self._redis = aioredis.from_url(settings.redis_url)
+        self._pubsub = self._redis.pubsub()
+        await self._pubsub.subscribe(self._REDIS_CHANNEL)
+        self._sub_task = asyncio.create_task(self._subscribe_loop())
+        logger.info("ws hub redis enabled", extra={"channel": self._REDIS_CHANNEL})
+
+    async def stop_redis(self) -> None:
+        """Tear down the Redis pub/sub (gateway shutdown)."""
+        if self._sub_task is not None:
+            self._sub_task.cancel()
+            self._sub_task = None
+        if self._pubsub is not None:
+            try:
+                await self._pubsub.unsubscribe(self._REDIS_CHANNEL)
+                await self._pubsub.aclose()
+            except Exception:  # pragma: no cover - best effort
+                pass
+            self._pubsub = None
+        if self._redis is not None:
+            try:
+                await self._redis.aclose()
+            except Exception:  # pragma: no cover
+                pass
+            self._redis = None
+
+    async def _subscribe_loop(self) -> None:
+        """Deliver Redis-published events (from other processes) to local sockets."""
+        assert self._pubsub is not None
+        try:
+            async for message in self._pubsub.listen():
+                if message.get("type") != "message":
+                    continue
+                try:
+                    payload = json.loads(message["data"])
+                except Exception:
+                    continue
+                if payload.get("origin") == self._origin:
+                    continue  # our own publish; already delivered locally
+                await self._local_broadcast(payload["session_id"], payload["event"])
+        except asyncio.CancelledError:  # pragma: no cover - shutdown
+            raise
+        except Exception as exc:  # pragma: no cover - resilience
+            logger.warning("ws redis subscribe loop ended", extra={"error": str(exc)})
 
     async def register(self, session_id: str, ws: WebSocket) -> None:
         """Add ``ws`` to ``session_id``'s connection set. The socket must already be
@@ -96,10 +167,29 @@ class WsHub:
         )
 
     async def broadcast(self, session_id: str, event: dict[str, Any]) -> None:
-        """Send a pre-built ``{type, ts, data}`` envelope to every socket on ``session_id``.
+        """Fan an envelope to ``session_id``'s sockets — locally and across processes.
+
+        Delivers to sockets owned by THIS process immediately, then (if Redis is enabled)
+        publishes so other processes (e.g. the agent worker → the gateway holding the
+        browser socket) deliver to theirs. With Redis disabled this is purely local.
+        """
+        await self._local_broadcast(session_id, event)
+        if self._redis is not None:
+            try:
+                await self._redis.publish(
+                    self._REDIS_CHANNEL,
+                    json.dumps(
+                        {"origin": self._origin, "session_id": session_id, "event": event}
+                    ),
+                )
+            except Exception as exc:  # pragma: no cover - best effort
+                logger.warning("ws redis publish failed", extra={"error": str(exc)})
+
+    async def _local_broadcast(self, session_id: str, event: dict[str, Any]) -> None:
+        """Send a pre-built ``{type, ts, data}`` envelope to every LOCAL socket on ``session_id``.
 
         Sockets that error on send (closed/broken) are collected and unregistered so the
-        registry self-heals. No-op when the session has no live connections.
+        registry self-heals. No-op when the session has no live connections in this process.
         """
         async with self._lock:
             targets = list(self._sessions.get(session_id, ()))

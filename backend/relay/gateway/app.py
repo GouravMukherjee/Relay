@@ -256,12 +256,37 @@ def _iter_rest_routers(module_names: Iterable[str]):
 # ---------------------------------------------------------------------------
 
 
+def _build_lifespan():
+    """FastAPI lifespan: start/stop the Redis-backed WS hub so cards/transcripts
+    broadcast by the separate agent process reach browser sockets on this gateway."""
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        from relay.gateway.ws import hub
+
+        try:
+            await hub.start_redis()
+        except Exception as exc:  # noqa: BLE001 — degrade to local-only hub
+            logger.warning("ws hub redis disabled", extra={"error": str(exc)})
+        try:
+            yield
+        finally:
+            try:
+                await hub.stop_redis()
+            except Exception:  # pragma: no cover
+                pass
+
+    return lifespan
+
+
 def create_app() -> FastAPI:
     """Build and return the configured Relay FastAPI application."""
     app = FastAPI(
         title="Relay API",
         version="1.0.0",
         description="Relay ambient co-pilot gateway (REST + WebSocket).",
+        lifespan=_build_lifespan(),
     )
 
     # --- CORS: locked to the configured frontend origin(s), credentials allowed.

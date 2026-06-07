@@ -54,10 +54,22 @@ class CompositeRetrievalService(RetrievalService):
         Adapters are imported lazily so importing this module never requires the
         adapter package (which validates creds at construction) to be present.
         """
-        from relay.adapters.moss import MossRetrieval
         from relay.adapters.pgvector_retrieval import PgVectorRetrieval
 
-        return cls(primary=MossRetrieval(), fallback=PgVectorRetrieval())
+        fallback = PgVectorRetrieval()
+        # Moss is primary when its key is configured; if construction fails (missing/bad
+        # key), degrade to pgvector-only instead of 500ing the whole query path.
+        try:
+            from relay.adapters.moss import MossRetrieval
+
+            primary: RetrievalService = MossRetrieval()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Moss unavailable; using pgvector-only retrieval",
+                extra={"error": str(exc)},
+            )
+            primary = fallback
+        return cls(primary=primary, fallback=fallback)
 
     # ------------------------------------------------------------------
     # RetrievalService

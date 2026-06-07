@@ -296,8 +296,10 @@ async def session_ws(
     client events until disconnect.
     """
     # --- Origin check (before accept) -------------------------------------------------
+    # FRONTEND_ORIGIN may be a comma-separated list; compare against the parsed allow-list.
     origin = websocket.headers.get("origin")
-    if origin and settings.frontend_origin and origin != settings.frontend_origin:
+    allowed = settings.cors_origins
+    if origin and allowed and origin.rstrip("/") not in allowed:
         logger.warning("ws origin rejected", extra={"origin": origin})
         await websocket.close(code=WS_POLICY_VIOLATION)
         return

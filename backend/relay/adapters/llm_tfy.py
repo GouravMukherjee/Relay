@@ -154,40 +154,25 @@ class TfyLLMClient(LLMClient):
                 "TfyLLMClient requires TFY_GATEWAY_URL to be set in the environment."
             )
 
-        self._model_name = settings.llm_model  # "claude" | "qwen" | "minimax"
-        self._model_id = _MODEL_IDS.get(self._model_name, _MODEL_IDS["claude"])
+        self._model_name = settings.llm_model  # label only: "claude" | "qwen" | "minimax"
+        # Provider-prefixed gateway model id (verified working via /chat/completions),
+        # e.g. "anthropic/claude-sonnet-4-5". TFY rejects unprefixed ids.
+        self._model_id = settings.tfy_model or _MODEL_IDS.get(
+            self._model_name, "anthropic/claude-sonnet-4-5"
+        )
         self._gateway_url = settings.tfy_gateway_url.rstrip("/")
 
-        if self._model_name == "claude":
-            if not settings.anthropic_api_key:
-                raise RuntimeError(
-                    "TfyLLMClient with llm_model='claude' requires "
-                    "ANTHROPIC_API_KEY to be set in the environment."
-                )
-            # Lazy import so the anthropic package is only required when using Claude.
-            import anthropic  # noqa: PLC0415
-
-            # The Anthropic SDK supports a custom base_url so we can route
-            # through the TrueFoundry gateway transparently.
-            # TODO: confirm <TrueFoundry> API — base_url format for Anthropic routing.
-            self._anthropic_client = anthropic.AsyncAnthropic(
-                api_key=settings.anthropic_api_key,
-                base_url=self._gateway_url,
-                default_headers={
-                    # TODO: confirm <TrueFoundry> API — any extra TFY headers needed.
-                    "X-TFY-API-Key": settings.tfy_api_key,
-                },
-            )
-        else:
-            # OpenAI-compatible path for Qwen / Minimax.
-            self._http_client = httpx.AsyncClient(
-                base_url=self._gateway_url,
-                headers={
-                    "Authorization": f"Bearer {settings.tfy_api_key}",
-                    "Content-Type": "application/json",
-                },
-                timeout=httpx.Timeout(30.0),
-            )
+        # All models route through the OpenAI-compatible /chat/completions endpoint on
+        # the TFY gateway (confirmed against the live gateway). The Anthropic-SDK path
+        # was removed: TFY exposes /chat/completions, not the Anthropic /v1/messages path.
+        self._http_client = httpx.AsyncClient(
+            base_url=self._gateway_url,
+            headers={
+                "Authorization": f"Bearer {settings.tfy_api_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=httpx.Timeout(30.0),
+        )
 
     # ------------------------------------------------------------------
     # LLMClient interface
@@ -209,42 +194,14 @@ class TfyLLMClient(LLMClient):
             return None
 
         user_message = _build_user_message(query, chunks, mode, window)
-
-        if self._model_name == "claude":
-            return await self._synthesize_claude(user_message)
-        else:
-            return await self._synthesize_openai_compat(user_message)
+        return await self._synthesize_openai_compat(user_message)
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _synthesize_claude(self, user_message: str) -> CardDraft | None:
-        """Call Claude through the Anthropic SDK (routed via TFY gateway)."""
-        # TODO: confirm <TrueFoundry> API — max_tokens and other params.
-        message = await self._anthropic_client.messages.create(
-            model=self._model_id,
-            max_tokens=512,
-            system=_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
-        )
-        raw_text: str = ""
-        for block in message.content:
-            if hasattr(block, "text"):
-                raw_text += block.text
-
-        logger.debug(
-            "tfy_llm_claude_ok",
-            extra={
-                "model": self._model_id,
-                "input_tokens": message.usage.input_tokens,
-                "output_tokens": message.usage.output_tokens,
-            },
-        )
-        return _parse_response(raw_text)
-
     async def _synthesize_openai_compat(self, user_message: str) -> CardDraft | None:
-        """Call Qwen / Minimax via the TFY OpenAI-compatible endpoint."""
+        """Call the chat model via the TFY OpenAI-compatible /chat/completions endpoint."""
         payload: dict[str, Any] = {
             "model": self._model_id,
             "messages": [
@@ -273,5 +230,4 @@ class TfyLLMClient(LLMClient):
 
     async def aclose(self) -> None:
         """Close underlying HTTP clients. Call on application shutdown."""
-        if self._model_name != "claude":
-            await self._http_client.aclose()
+        await self._http_client.aclose()

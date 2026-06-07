@@ -1482,7 +1482,7 @@ input {
 }
 
 /* ============================================================================
-   Auth — login / create-account gate (VITE_USE_MOCK=false)
+   Auth — login / create-account gate
    ============================================================================ */
 .login-root,
 .login-loading {

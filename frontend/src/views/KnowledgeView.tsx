@@ -23,10 +23,10 @@ export function KnowledgeView() {
   //    flips processing → ready without a manual refresh. ──────────────────────
   const hasProcessing = !!data?.some((d) => d.status === "processing");
   useEffect(() => {
-    if (demo || !hasProcessing) return;
+    if (!hasProcessing) return;
     const t = setTimeout(reload, 3000);
     return () => clearTimeout(t);
-  }, [demo, hasProcessing, data, reload]);
+  }, [hasProcessing, data, reload]);
 
   const uploadFiles = useCallback(
     async (files: File[]) => {
@@ -68,7 +68,7 @@ export function KnowledgeView() {
       className={`section-page${dragActive ? " drag-active" : ""}`}
       onDragOver={(e) => {
         e.preventDefault();
-        if (!demo) setDragActive(true);
+        setDragActive(true);
       }}
       onDragLeave={(e) => {
         e.preventDefault();

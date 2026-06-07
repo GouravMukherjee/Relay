@@ -1,6 +1,6 @@
 // Auth context: session tracking + token accessor.
 // Wraps the Supabase session and exposes getToken() for injecting Bearer tokens
-// into API calls and WebSocket URLs. Only rendered when VITE_USE_MOCK=false.
+// into API calls and WebSocket URLs.
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";

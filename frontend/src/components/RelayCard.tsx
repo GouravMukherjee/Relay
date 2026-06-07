@@ -43,7 +43,7 @@ export function RelayCard({ card, featured, autoSpeak }: Props) {
     setTimeout(() => setCopied(false), 1400);
   };
 
-  // Whisper-back: synthesize the answer via MiniMax and play it. No-op in demo mode.
+  // Whisper-back: synthesize the answer via MiniMax and play it.
   const speak = async () => {
     if (audioRef.current) {
       audioRef.current.pause();

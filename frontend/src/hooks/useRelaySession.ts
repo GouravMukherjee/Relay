@@ -6,7 +6,7 @@ import { api } from "../api/client";
 import { WsTransport, type RelayTransport } from "../api/transport";
 import { LIVEKIT_URL, wsUrl } from "../config";
 
-// Token injector for WS URL. Set externally by AuthContext when USE_MOCK=false.
+// Token injector for WS URL. Set externally by AuthContext.
 let _wsGetToken: (() => string | null) | null = null;
 export function setWsTokenProvider(fn: () => string | null): void {
   _wsGetToken = fn;

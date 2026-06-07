@@ -1,6 +1,5 @@
-// Transport abstraction over the per-session event stream. Both the real
-// WebSocket (/ws/sessions/{id}) and the in-browser demo engine implement this,
-// so the rest of the app is agnostic to whether a backend is present.
+// Transport abstraction over the per-session event stream — the WebSocket
+// (/ws/sessions/{id}) carries transcript / card / status events to the UI.
 
 import type { ClientEvent, ServerEvent } from "../types";
 

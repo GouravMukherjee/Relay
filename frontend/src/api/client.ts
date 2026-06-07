@@ -6,7 +6,7 @@ import type { Card, DocumentRecord, Lead, Mode, SessionInfo, Utterance } from ".
 
 // Token provider: set this to a function that returns the current JWT so that
 // req() and uploadDocument can inject "Authorization: Bearer <token>".
-// Wired up by AuthContext when VITE_USE_MOCK=false; no-op in mock mode.
+// Wired up by AuthContext on sign-in.
 let _getToken: (() => string | null) | null = null;
 
 export function setTokenProvider(fn: () => string | null): void {
@@ -122,8 +122,6 @@ export const api = {
   // ── Additive endpoints ───────────────────────────────────────────────────────
   // Beyond the frozen API_SPEC, but following the same conventions. These back
   // the dashboard chrome (nav tabs, account, notifications) and per-mode actions.
-  // The backend (FastAPI gateway, see TECHNICAL_DESIGN §3.8) is expected to add
-  // these; until then the UI degrades gracefully in demo mode.
 
   // Account / chrome
   getMe: () => req<User>("/me"),

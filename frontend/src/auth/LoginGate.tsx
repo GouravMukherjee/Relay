@@ -1,6 +1,6 @@
 // Renders the auth screen when the user is not authenticated: Google OAuth plus
 // email/password sign-in and account creation. Passes children through once a
-// session exists. Only mounted when VITE_USE_MOCK=false.
+// session exists.
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "./AuthContext";

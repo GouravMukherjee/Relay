@@ -1,0 +1,17 @@
+# Keep the build context (and image) lean and secret-free.
+tests/
+deploy/
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+*.egg-info/
+relay.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+docker-compose.yml
+Makefile
+README.md

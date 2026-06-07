@@ -3,9 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import type { RelaySessionState } from "../hooks/useRelaySession";
 import { api } from "../api/client";
 import { useBackend } from "../backend";
-import { DESK_CUSTOMER } from "../mock/dataset";
 import { Icon } from "../components/Icon";
-import { initials } from "../util";
 import { easeOut, fadeUp, iconHover, inView, pressable } from "../motion";
 
 interface Props {
@@ -54,8 +52,6 @@ export function DeskView({ state, onQuery }: Props) {
     setEditing(false);
   };
 
-  const c = DESK_CUSTOMER;
-
   return (
     <div className="split">
       {/* Left: conversation */}
@@ -80,10 +76,10 @@ export function DeskView({ state, onQuery }: Props) {
           )}
           <AnimatePresence initial={false}>
             {state.utterances.map((u) => (
-              <ChatBubble key={u.utterance_id} speaker={u.speaker} text={u.text} name={c.name} />
+              <ChatBubble key={u.utterance_id} speaker={u.speaker} text={u.text} />
             ))}
           </AnimatePresence>
-          {state.partial && <ChatBubble speaker={state.partial.speaker} text={state.partial.text} name={c.name} />}
+          {state.partial && <ChatBubble speaker={state.partial.speaker} text={state.partial.text} />}
         </div>
 
         <div className="composer">
@@ -128,34 +124,13 @@ export function DeskView({ state, onQuery }: Props) {
             <div className="section-label label-caps" style={{ paddingBottom: 16 }}>
               Customer
             </div>
-            <div className="customer-head">
-              <div className="customer-avatar">{initials(c.name)}</div>
-              <div>
-                <div className="customer-name">
-                  <h3>{c.name}</h3>
-                  <span className="plan-badge">
-                    <span className="dot" />
-                    {c.plan}
-                  </span>
-                </div>
-                <div className="customer-co">{c.company}</div>
+            <div className="empty-state" style={{ padding: 16 }}>
+              <Icon name="person" size={32} />
+              <div className="small">
+                No customer linked to this session. Their profile &amp; recent tickets appear here once a
+                customer is matched.
               </div>
             </div>
-
-            <div className="tickets-label label-caps">Recent Tickets</div>
-            {c.tickets.map((t, i) => (
-              <motion.div
-                className="ticket"
-                key={t.title}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.35, ease: easeOut, delay: 0.2 + i * 0.08 }}
-              >
-                <Icon name="task_alt" size={18} fill />
-                <span className="ticket-title">{t.title}</span>
-                <span className="ticket-meta mono">{t.meta}</span>
-              </motion.div>
-            ))}
           </motion.div>
 
           {resolution ? (
@@ -224,7 +199,7 @@ export function DeskView({ state, onQuery }: Props) {
   );
 }
 
-function ChatBubble({ speaker, text, name }: { speaker: string; text: string; name: string }) {
+function ChatBubble({ speaker, text }: { speaker: string; text: string }) {
   const isRep = speaker === "rep" || speaker === "relay";
   return (
     <motion.div
@@ -240,7 +215,11 @@ function ChatBubble({ speaker, text, name }: { speaker: string; text: string; na
         alignItems: "flex-start",
       }}
     >
-      {!isRep && <div className="customer-avatar" style={{ width: 32, height: 32, fontSize: 12 }}>{initials(name)}</div>}
+      {!isRep && (
+        <div className="customer-avatar" style={{ width: 32, height: 32 }}>
+          <Icon name="person" size={18} />
+        </div>
+      )}
       <div
         style={{
           maxWidth: "78%",

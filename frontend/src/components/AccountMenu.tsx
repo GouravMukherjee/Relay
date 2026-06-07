@@ -4,8 +4,8 @@ import { Icon } from "./Icon";
 import { pressable } from "../motion";
 
 // Avatar button + dropdown showing the signed-in email and a sign-out action.
-// Presentational only (no auth import) so it stays out of the demo bundle —
-// `email` / `onSignOut` are injected from the auth boundary in functional mode.
+// Presentational only (no auth import); `email` / `onSignOut` are injected from
+// the auth boundary.
 interface Props {
   email: string | null;
   onSignOut?: () => void;
@@ -58,9 +58,9 @@ export function AccountMenu({ email, onSignOut }: Props) {
               <div className="account-avatar">{initial}</div>
               <div className="account-id">
                 <div className="account-email" title={email ?? undefined}>
-                  {email ?? "Demo session"}
+                  {email ?? "Account"}
                 </div>
-                <div className="account-sub">{email ? "Signed in" : "Demo mode"}</div>
+                <div className="account-sub">{email ? "Signed in" : "—"}</div>
               </div>
             </div>
 
@@ -74,7 +74,6 @@ export function AccountMenu({ email, onSignOut }: Props) {
                 onSignOut?.();
               }}
               disabled={!onSignOut}
-              title={onSignOut ? undefined : "Sign-out is unavailable in demo mode"}
             >
               <Icon name="logout" size={18} />
               Sign out

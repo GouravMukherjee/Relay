@@ -1,7 +1,5 @@
-// Runtime configuration & the demo↔functional toggle.
+// Runtime configuration.
 //
-//   VITE_DEMO_MODE   "true"  → demo state: in-browser mock engine, no network.
-//                    "false" → functional site: connect to the real backend.
 //   VITE_BACKEND_URL  the backend IP/origin, e.g. "192.168.1.50:8000" or
 //                     "https://api.example.com". A bare host is normalized to http://.
 //
@@ -34,13 +32,6 @@ export const BACKEND_HOST: string = BACKEND_URL.replace(/^https?:\/\//i, "");
 // functional mode (e.g. wss://<project>.livekit.cloud). Empty = no live audio
 // (manual typed queries still work).
 export const LIVEKIT_URL: string = (env.VITE_LIVEKIT_URL ?? "").trim();
-
-// The toggle. VITE_DEMO_MODE is canonical; VITE_USE_MOCK kept as a back-compat alias.
-const demoRaw = env.VITE_DEMO_MODE ?? env.VITE_USE_MOCK ?? "true";
-export const DEMO_MODE: boolean = String(demoRaw).toLowerCase() !== "false";
-
-// Back-compat alias used throughout the app.
-export const USE_MOCK = DEMO_MODE;
 
 // REST base. Same-origin relative path by default (proxied → no CORS). Override
 // with an absolute VITE_API_BASE to hit the backend directly (needs backend CORS).

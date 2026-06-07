@@ -1,11 +1,10 @@
-// Owns a Relay session: creates it, wires the event transport (real WS or the
-// demo engine), and exposes reactive state + actions to the UI.
+// Owns a Relay session: creates it on the backend, wires the WebSocket transport
+// (and LiveKit audio), and exposes reactive state + actions to the UI.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { WsTransport, type RelayTransport } from "../api/transport";
-import { MockEngine } from "../mock/engine";
-import { LIVEKIT_URL, USE_MOCK, wsUrl } from "../config";
+import { LIVEKIT_URL, wsUrl } from "../config";
 
 // Token injector for WS URL. Set externally by AuthContext when USE_MOCK=false.
 let _wsGetToken: (() => string | null) | null = null;
@@ -56,8 +55,7 @@ export function useRelaySession(initialMode: Mode) {
   });
 
   const transportRef = useRef<RelayTransport | null>(null);
-  const engineRef = useRef<MockEngine | null>(null);
-  // LiveKit room (functional mode only): publishes the mic so the agent transcribes.
+  // LiveKit room: publishes the mic so the agent worker transcribes live audio.
   const roomRef = useRef<import("livekit-client").Room | null>(null);
 
   const handleEvent = useCallback((e: ServerEvent) => {
@@ -108,52 +106,45 @@ export function useRelaySession(initialMode: Mode) {
       let sessionId: string;
       let transport: RelayTransport;
 
-      if (USE_MOCK) {
-        sessionId = `ses_demo${Math.random().toString(36).slice(2, 8)}`;
-        const engine = new MockEngine(sessionId, initialMode);
-        engineRef.current = engine;
-        transport = engine;
-      } else {
-        // Functional mode: create a session on the backend, then open its WS
-        // (passing the auth token as a connect param when present).
-        try {
-          const res = await api.createSession(initialMode);
-          sessionId = res.session_id;
-          const rawWsUrl = wsUrl(res.ws_url);
-          const token = _wsGetToken?.();
-          const fullWsUrl = token
-            ? `${rawWsUrl}${rawWsUrl.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`
-            : rawWsUrl;
-          transport = new WsTransport(fullWsUrl);
+      // Create a session on the backend, then open its WS (passing the auth token
+      // as a connect param when present).
+      try {
+        const res = await api.createSession(initialMode);
+        sessionId = res.session_id;
+        const rawWsUrl = wsUrl(res.ws_url);
+        const token = _wsGetToken?.();
+        const fullWsUrl = token
+          ? `${rawWsUrl}${rawWsUrl.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`
+          : rawWsUrl;
+        transport = new WsTransport(fullWsUrl);
 
-          // Best-effort: join the LiveKit room and publish the mic so the agent
-          // worker can transcribe live audio. Audio failure is non-fatal — the
-          // session still works with manual queries + the card/transcript WS.
-          if (res.livekit_token && LIVEKIT_URL) {
-            try {
-              const { Room } = await import("livekit-client");
-              const room = new Room();
-              await room.connect(LIVEKIT_URL, res.livekit_token);
-              if (disposed) {
-                await room.disconnect();
-                return;
-              }
-              await room.localParticipant.setMicrophoneEnabled(true);
-              roomRef.current = room;
-            } catch (audioErr) {
-              console.warn("Relay: LiveKit audio unavailable —", audioErr);
+        // Best-effort: join the LiveKit room and publish the mic so the agent
+        // worker can transcribe live audio. Audio failure is non-fatal — the
+        // session still works with manual queries + the card/transcript WS.
+        if (res.livekit_token && LIVEKIT_URL) {
+          try {
+            const { Room } = await import("livekit-client");
+            const room = new Room();
+            await room.connect(LIVEKIT_URL, res.livekit_token);
+            if (disposed) {
+              await room.disconnect();
+              return;
             }
+            await room.localParticipant.setMicrophoneEnabled(true);
+            roomRef.current = room;
+          } catch (audioErr) {
+            console.warn("Relay: LiveKit audio unavailable —", audioErr);
           }
-        } catch (e) {
-          if (disposed) return;
-          const msg = (e as { message?: string })?.message ?? "request failed";
-          setState((s) => ({
-            ...s,
-            status: "ended",
-            lastError: `Can't reach backend — ${msg}`,
-          }));
-          return;
         }
+      } catch (e) {
+        if (disposed) return;
+        const msg = (e as { message?: string })?.message ?? "request failed";
+        setState((s) => ({
+          ...s,
+          status: "ended",
+          lastError: `Can't reach backend — ${msg}`,
+        }));
+        return;
       }
 
       if (disposed) {
@@ -172,7 +163,6 @@ export function useRelaySession(initialMode: Mode) {
       transportRef.current = null;
       void roomRef.current?.disconnect();
       roomRef.current = null;
-      engineRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -209,19 +199,10 @@ export function useRelaySession(initialMode: Mode) {
   const routeLead = useCallback(() => {
     setState((s) => {
       if (!s.lead) return s;
-      const routed = { ...s.lead, routed_to: "#sales" };
-      if (!USE_MOCK && s.lead.lead_id !== "lead_draft") void api.routeLead(s.lead.lead_id);
-      return { ...s, lead: routed };
+      void api.routeLead(s.lead.lead_id);
+      return { ...s, lead: { ...s.lead, routed_to: "#sales" } };
     });
   }, []);
 
-  // Demo-only: drive the rehearsed script. No-op against a real backend.
-  const playNextBeat = useCallback(async () => {
-    if (engineRef.current) return engineRef.current.playNextBeat();
-    return false;
-  }, []);
-
-  const canPlayBeat = !!engineRef.current;
-
-  return { state, setMode, sendQuery, pinCard, dismissCard, routeLead, playNextBeat, canPlayBeat };
+  return { state, setMode, sendQuery, pinCard, dismissCard, routeLead };
 }

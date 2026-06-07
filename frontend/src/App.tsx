@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useRelaySession } from "./hooks/useRelaySession";
 import { useBackend } from "./backend";
@@ -6,28 +6,15 @@ import { api } from "./api/client";
 import { easeOut } from "./motion";
 import { TopNav } from "./components/TopNav";
 import { Sidebar, type NavKey } from "./components/Sidebar";
-import { Icon } from "./components/Icon";
 import { LiveView } from "./views/LiveView";
 import { DeskView } from "./views/DeskView";
 import { IntakeView } from "./views/IntakeView";
 import { KnowledgeView } from "./views/KnowledgeView";
 import { TranscriptsView } from "./views/TranscriptsView";
 import { TeamView } from "./views/TeamView";
-import { USE_MOCK } from "./config";
-
-// Lazily load auth components only when USE_MOCK=false.
-// Vite tree-shakes the entire auth subtree in demo builds.
-const AuthProviderLazy = lazy(() =>
-  import("./auth/AuthContext").then((m) => ({ default: m.AuthProvider }))
-);
-
-const LoginGateLazy = lazy(() =>
-  import("./auth/LoginGate").then((m) => ({ default: m.LoginGate }))
-);
-
-const AuthBridgeLazy = lazy(() =>
-  import("./auth/AuthBridge").then((m) => ({ default: m.AuthBridge }))
-);
+import { AuthProvider } from "./auth/AuthContext";
+import { LoginGate } from "./auth/LoginGate";
+import { AuthBridge } from "./auth/AuthBridge";
 
 interface Account {
   email: string | null;
@@ -37,13 +24,11 @@ interface Account {
 // ── Main dashboard ────────────────────────────────────────────────────────────
 
 function Dashboard({ account }: { account?: Account }) {
-  const { state, setMode, sendQuery, routeLead, playNextBeat, canPlayBeat } =
-    useRelaySession("live");
+  const { state, setMode, sendQuery, routeLead } = useRelaySession("live");
   const { call, toast } = useBackend();
-  const [beatsLeft, setBeatsLeft] = useState(true);
   const [nav, setNav] = useState<NavKey>("dashboard");
 
-  // Surface backend connection errors (functional mode) as a toast.
+  // Surface backend connection errors as a toast.
   const lastShownError = useRef<string | null>(null);
   useEffect(() => {
     if (state.lastError && state.lastError !== lastShownError.current) {
@@ -52,14 +37,8 @@ function Dashboard({ account }: { account?: Account }) {
     }
   }, [state.lastError, toast]);
 
-  const onBeat = async () => {
-    const more = await playNextBeat();
-    setBeatsLeft(more);
-  };
-
   const onMode = (m: typeof state.mode) => {
     setMode(m);
-    setBeatsLeft(true);
     setNav("dashboard");
   };
 
@@ -127,47 +106,20 @@ function Dashboard({ account }: { account?: Account }) {
           </main>
         </div>
       </div>
-
-      <AnimatePresence>
-        {canPlayBeat && nav === "dashboard" && (
-          <motion.button
-            className="beat-pill"
-            onClick={onBeat}
-            disabled={!beatsLeft}
-            title="Play the next scripted demo line"
-            initial={{ opacity: 0, y: 20, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.9 }}
-            whileHover={{ scale: 1.04, y: -2 }}
-            whileTap={{ scale: 0.96 }}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
-          >
-            <Icon name="play_arrow" size={16} fill />
-            {beatsLeft ? "Next demo beat" : "Demo complete"}
-          </motion.button>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
 
 // ── Root ──────────────────────────────────────────────────────────────────────
+// Auth-gated: sign in, then the session (email + signOut) is bridged into the
+// Dashboard via props.
 
 export function App() {
-  if (USE_MOCK) {
-    // Mock path: no auth, no Supabase, no login gate. 100% intact.
-    return <Dashboard />;
-  }
-
-  // Real backend path: wrap in lazily-loaded AuthProvider + LoginGate, and bridge
-  // the authenticated session (email + signOut) into the Dashboard via props.
   return (
-    <Suspense fallback={<div className="login-loading"><span>Loading…</span></div>}>
-      <AuthProviderLazy>
-        <LoginGateLazy>
-          <AuthBridgeLazy>{(account) => <Dashboard account={account} />}</AuthBridgeLazy>
-        </LoginGateLazy>
-      </AuthProviderLazy>
-    </Suspense>
+    <AuthProvider>
+      <LoginGate>
+        <AuthBridge>{(account) => <Dashboard account={account} />}</AuthBridge>
+      </LoginGate>
+    </AuthProvider>
   );
 }

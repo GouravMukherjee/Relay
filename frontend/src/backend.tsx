@@ -1,12 +1,10 @@
 // Backend-call layer. Every interactive control routes its action through
-// useBackend().call(...), which targets the real gateway when one is configured
-// (VITE_USE_MOCK=false) and degrades to an informative toast in demo mode — so
-// the whole UI is "wired for backend" today and live the moment it exists.
+// useBackend().call(...), which hits the gateway and shows pending/success/error
+// toasts.
 
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { USE_MOCK } from "./config";
 import type { ApiError } from "./api/client";
 
 type ToastKind = "pending" | "success" | "error" | "info";
@@ -17,9 +15,9 @@ interface Toast {
 }
 
 interface CallOptions {
-  /** HTTP method + path shown in demo toasts, e.g. "POST /documents". */
+  /** HTTP method + path, kept for call-site documentation. */
   endpoint?: string;
-  /** Message on success (real backend). Defaults to "<label> done". */
+  /** Message on success. Defaults to "<label> done". */
   success?: string;
 }
 
@@ -46,11 +44,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const call = useCallback(
     async <T,>(label: string, fn: () => Promise<T>, opts?: CallOptions): Promise<T | undefined> => {
-      // Demo mode: no gateway to talk to — show what *would* be sent.
-      if (USE_MOCK) {
-        push(`${label} → ${opts?.endpoint ?? "backend"} · pending setup`, "info");
-        return undefined;
-      }
       const pendingId = push(`${label}…`, "pending", 0);
       try {
         const res = await fn();

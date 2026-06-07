@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { BACKEND_HOST, DEMO_MODE } from "../config";
+import { BACKEND_HOST } from "../config";
 import type { Mode } from "../types";
 import { Icon } from "./Icon";
 import { easeOut, itemLeft, pressable, staggerParent } from "../motion";
@@ -72,20 +72,13 @@ export function Sidebar({ mode, nav, onNav, onNewAnalysis, status, collapsed }: 
       </motion.nav>
 
       <div className="sidebar-foot">
-        {DEMO_MODE ? (
-          <span className="demo-flag" title={collapsed ? "Demo engine" : undefined}>
-            <Icon name="bolt" size={13} fill />
-            <span>Demo engine</span>
+        <span className="conn-flag" title={`Backend · ${BACKEND_HOST}`}>
+          <span className={`conn-dot ${status}`} />
+          <span className="conn-label">
+            {status === "active" ? "Connected" : status === "connecting" ? "Connecting…" : "Offline"}
           </span>
-        ) : (
-          <span className="conn-flag" title={`Backend · ${BACKEND_HOST}`}>
-            <span className={`conn-dot ${status}`} />
-            <span className="conn-label">
-              {status === "active" ? "Connected" : status === "connecting" ? "Connecting…" : "Offline"}
-            </span>
-            <span className="conn-host mono">{BACKEND_HOST}</span>
-          </span>
-        )}
+          <span className="conn-host mono">{BACKEND_HOST}</span>
+        </span>
       </div>
     </motion.aside>
   );

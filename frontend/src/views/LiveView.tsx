@@ -64,7 +64,7 @@ export function LiveView({ state }: Props) {
           {state.utterances.length === 0 && !state.partial && (
             <motion.div className="empty-state" style={{ padding: 24 }} variants={fadeUp} initial="hidden" animate="show">
               <Icon name="hearing" size={32} />
-              <div className="small">Listening for the conversation. Speak a question — or replay the demo beats.</div>
+              <div className="small">Listening for the conversation. Ask a question, or type one below.</div>
             </motion.div>
           )}
           <AnimatePresence initial={false}>

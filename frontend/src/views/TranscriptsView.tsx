@@ -1,18 +1,13 @@
 import { motion } from "framer-motion";
 import { api } from "../api/client";
 import { useResource } from "../hooks/useResource";
-import { DEMO_SESSIONS } from "../mock/dataset";
 import { Icon } from "../components/Icon";
-import { DemoBanner } from "./KnowledgeView";
 import { fadeUp, hoverCard, inView, item, staggerParent } from "../motion";
 
 const MODE_ICON: Record<string, string> = { live: "graphic_eq", desk: "support_agent", intake: "person_search" };
 
 export function TranscriptsView() {
-  const { data, loading, error, demo } = useResource(
-    () => api.listSessions().then((r) => r.sessions),
-    DEMO_SESSIONS,
-  );
+  const { data, loading, error } = useResource(() => api.listSessions().then((r) => r.sessions));
 
   return (
     <div className="section-page">
@@ -23,9 +18,9 @@ export function TranscriptsView() {
         </div>
       </motion.div>
 
-      {demo && <DemoBanner endpoint="GET /sessions" />}
       {loading && <div className="page-empty">Loading sessions…</div>}
       {error && <div className="page-empty error">Couldn’t load sessions — {error}</div>}
+      {data && data.length === 0 && <div className="page-empty">No sessions yet.</div>}
 
       {data && (
         <motion.div

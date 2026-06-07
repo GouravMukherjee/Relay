@@ -1,29 +1,24 @@
-// Fetch a backend resource for the dashboard section tabs. Against a real gateway
-// it fetches on mount; in demo mode it returns bundled demo data (flagged `demo`)
-// so the tab is populated and obviously "wired, backend pending".
+// Fetch a backend resource for the dashboard section tabs, on mount + on reload().
 
 import { useCallback, useEffect, useState } from "react";
-import { USE_MOCK } from "../config";
 import type { ApiError } from "../api/client";
 
 export interface Resource<T> {
   data: T | null;
   loading: boolean;
   error: string | null;
-  demo: boolean;
   reload: () => void;
 }
 
-export function useResource<T>(fetcher: () => Promise<T>, demoData: T): Resource<T> {
-  const [data, setData] = useState<T | null>(USE_MOCK ? demoData : null);
-  const [loading, setLoading] = useState(!USE_MOCK);
+export function useResource<T>(fetcher: () => Promise<T>): Resource<T> {
+  const [data, setData] = useState<T | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
 
   useEffect(() => {
-    if (USE_MOCK) return;
     let alive = true;
     setLoading(true);
     setError(null);
@@ -37,5 +32,5 @@ export function useResource<T>(fetcher: () => Promise<T>, demoData: T): Resource
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick]);
 
-  return { data, loading, error, demo: USE_MOCK, reload };
+  return { data, loading, error, reload };
 }

@@ -3,16 +3,14 @@ import { motion } from "framer-motion";
 import { api } from "../api/client";
 import { useResource } from "../hooks/useResource";
 import { useBackend } from "../backend";
-import { DEMO_DOCS } from "../mock/dataset";
 import { Icon } from "../components/Icon";
 import { clock } from "../util";
 import { fadeUp, inView, item, pressable, staggerParent } from "../motion";
 
 export function KnowledgeView() {
   const { call } = useBackend();
-  const { data, loading, error, demo, reload } = useResource(
-    () => api.listDocuments().then((r) => r.documents),
-    DEMO_DOCS,
+  const { data, loading, error, reload } = useResource(() =>
+    api.listDocuments().then((r) => r.documents),
   );
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -52,9 +50,11 @@ export function KnowledgeView() {
         />
       </motion.div>
 
-      {demo && <DemoBanner endpoint="GET /documents" />}
       {loading && <div className="page-empty">Loading documents…</div>}
       {error && <div className="page-empty error">Couldn’t load documents — {error}</div>}
+      {data && data.length === 0 && (
+        <div className="page-empty">No documents yet. Upload one to build Relay’s knowledge.</div>
+      )}
 
       {data && (
         <motion.div
@@ -97,19 +97,5 @@ export function KnowledgeView() {
         </motion.div>
       )}
     </div>
-  );
-}
-
-export function DemoBanner({ endpoint }: { endpoint: string }) {
-  return (
-    <motion.div
-      className="demo-banner"
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: 0.1 }}
-    >
-      <Icon name="info" size={16} />
-      Showing demo data. Wired to <code>{endpoint}</code> — set <code>VITE_DEMO_MODE=false</code> for live data.
-    </motion.div>
   );
 }

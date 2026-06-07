@@ -15,7 +15,7 @@ class Source(BaseModel):
 
 class Card(BaseModel):
     card_id: str       # card_…
-    session_id: str    # ses_…
+    session_id: str | None = None    # ses_… (None for session-less manual queries)
     mode: str          # live | desk | intake
     title: str | None = None   # short headline, e.g. "99.9% uptime SLA"
     answer: str

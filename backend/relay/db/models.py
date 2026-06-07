@@ -302,8 +302,8 @@ class Card(Base):
     __tablename__ = "cards"
 
     id: Mapped[str] = mapped_column(Text, primary_key=True, default=_card_id)
-    session_id: Mapped[str] = mapped_column(
-        Text, ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False, index=True
+    session_id: Mapped[str | None] = mapped_column(
+        Text, ForeignKey("sessions.id", ondelete="CASCADE"), nullable=True, index=True
     )
     organization_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), nullable=False, index=True
@@ -317,7 +317,7 @@ class Card(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
-    session: Mapped["Session"] = relationship(back_populates="cards")
+    session: Mapped["Session | None"] = relationship(back_populates="cards")
     sources: Mapped[list["CardSource"]] = relationship(
         back_populates="card", cascade="all, delete-orphan"
     )

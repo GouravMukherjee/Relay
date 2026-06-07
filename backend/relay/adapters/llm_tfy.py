@@ -124,18 +124,18 @@ def _parse_response(raw: str) -> CardDraft | None:
 
 
 class TfyLLMClient(LLMClient):
-    """LLM client routed through the TrueFoundry AI Gateway.
+    """LLM client: TrueFoundry AI Gateway primary, direct Anthropic SDK fallback.
 
     Routes based on ``settings.llm_model``:
-      - ``"claude"``  → Anthropic SDK with ``base_url`` pointed at TFY
-      - ``"qwen"``    → httpx against TFY (OpenAI-compatible)
-      - ``"minimax"`` → httpx against TFY (OpenAI-compatible)
+      - ``"claude"``  → TFY /chat/completions first; falls back to direct Anthropic SDK
+      - ``"qwen"``    → TFY /chat/completions (OpenAI-compatible)
+      - ``"minimax"`` → TFY /chat/completions (OpenAI-compatible)
 
     Required settings
     -----------------
-    tfy_api_key      : str — Bearer token for the gateway
+    tfy_api_key      : str — Bearer token for the TFY gateway
     tfy_gateway_url  : str — Gateway base URL
-    anthropic_api_key: str — Required only for the ``"claude"`` path
+    anthropic_api_key: str — Direct Anthropic API key (fallback when TFY billing fails)
     """
 
     def __init__(self) -> None:
@@ -157,8 +157,7 @@ class TfyLLMClient(LLMClient):
         self._gateway_url = settings.tfy_gateway_url.rstrip("/")
 
         # All models route through the OpenAI-compatible /chat/completions endpoint on
-        # the TFY gateway (confirmed against the live gateway). The Anthropic-SDK path
-        # was removed: TFY exposes /chat/completions, not the Anthropic /v1/messages path.
+        # the TFY gateway (confirmed against the live gateway).
         self._http_client = httpx.AsyncClient(
             base_url=self._gateway_url,
             headers={
@@ -167,6 +166,29 @@ class TfyLLMClient(LLMClient):
             },
             timeout=httpx.Timeout(30.0),
         )
+
+        # Direct Anthropic client — used when TFY billing fails (credit balance errors).
+        self._anthropic_client = None
+        if settings.anthropic_api_key:
+            try:
+                import anthropic as _anthropic
+                self._anthropic_client = _anthropic.AsyncAnthropic(
+                    api_key=settings.anthropic_api_key
+                )
+            except ImportError:
+                pass
+
+        # Qwen DashScope intl — last-resort fallback (free tier, works for synthesis).
+        self._qwen_http_client = None
+        if settings.qwen_api_key:
+            self._qwen_http_client = httpx.AsyncClient(
+                base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+                headers={
+                    "Authorization": f"Bearer {settings.qwen_api_key}",
+                    "Content-Type": "application/json",
+                },
+                timeout=httpx.Timeout(30.0),
+            )
 
     # ------------------------------------------------------------------
     # LLMClient interface
@@ -188,7 +210,7 @@ class TfyLLMClient(LLMClient):
             return None
 
         user_message = _build_user_message(query, chunks, mode, window)
-        # Try the primary model, then any configured fallbacks (automatic failover).
+        # Try the primary model via TFY, then configured fallbacks, then direct Anthropic.
         models = [self._model_id] + [
             m.strip() for m in settings.tfy_fallback_models.split(",") if m.strip()
         ]
@@ -199,6 +221,23 @@ class TfyLLMClient(LLMClient):
             except Exception as exc:  # noqa: BLE001 — try the next model on any failure
                 last_exc = exc
                 logger.warning("llm model failed; trying fallback", extra={"model": model, "error": str(exc)})
+
+        # All TFY paths failed — try direct Anthropic SDK if available (handles billing errors).
+        if self._anthropic_client is not None:
+            try:
+                return await self._synthesize_anthropic_direct(user_message)
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                logger.warning("anthropic direct fallback failed", extra={"error": str(exc)})
+
+        # Last resort: Qwen DashScope (always available on free tier).
+        if self._qwen_http_client is not None:
+            try:
+                return await self._synthesize_openai_compat(user_message, "qwen-plus", client=self._qwen_http_client)
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                logger.warning("qwen fallback failed", extra={"error": str(exc)})
+
         if last_exc is not None:
             raise last_exc
         return None
@@ -207,8 +246,14 @@ class TfyLLMClient(LLMClient):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _synthesize_openai_compat(self, user_message: str, model: str) -> CardDraft | None:
-        """Call *model* via the TFY OpenAI-compatible /chat/completions endpoint."""
+    async def _synthesize_openai_compat(
+        self,
+        user_message: str,
+        model: str,
+        client: httpx.AsyncClient | None = None,
+    ) -> CardDraft | None:
+        """Call *model* via an OpenAI-compatible /chat/completions endpoint."""
+        http = client or self._http_client
         payload: dict[str, Any] = {
             "model": model,
             "messages": [
@@ -219,7 +264,7 @@ class TfyLLMClient(LLMClient):
             "temperature": 0.0,
         }
 
-        response = await self._http_client.post("/chat/completions", json=payload)
+        response = await http.post("/chat/completions", json=payload)
         response.raise_for_status()
         data = response.json()
 
@@ -228,9 +273,25 @@ class TfyLLMClient(LLMClient):
             .get("message", {})
             .get("content", "")
         )
-        logger.debug("tfy_llm_ok", extra={"model": model})
+        logger.debug("llm_ok", extra={"model": model})
+        return _parse_response(raw_text)
+
+    async def _synthesize_anthropic_direct(self, user_message: str) -> CardDraft | None:
+        """Call the Anthropic API directly (fallback when TFY billing fails)."""
+        # Anthropic's model ID doesn't use the provider prefix.
+        model = self._model_id.replace("anthropic/", "")
+        msg = await self._anthropic_client.messages.create(
+            model=model,
+            max_tokens=512,
+            system=_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_message}],
+        )
+        raw_text: str = msg.content[0].text if msg.content else ""
+        logger.debug("anthropic_direct_ok", extra={"model": model})
         return _parse_response(raw_text)
 
     async def aclose(self) -> None:
         """Close underlying HTTP clients. Call on application shutdown."""
         await self._http_client.aclose()
+        if self._qwen_http_client is not None:
+            await self._qwen_http_client.aclose()

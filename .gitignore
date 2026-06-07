@@ -27,3 +27,6 @@ venv/
 
 # Node
 node_modules/
+
+# TS build cache
+*.tsbuildinfo

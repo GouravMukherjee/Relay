@@ -28,7 +28,7 @@ Full detail in [`TECHNICAL_DESIGN.md`](./TECHNICAL_DESIGN.md).
 | LLM | Claude (primary), Minimax (optional) |
 | Backend | Python 3.11 · FastAPI · LiveKit Agents |
 | DB | PostgreSQL 15 + pgvector |
-| Frontend | React 18 + TypeScript |
+| Frontend | React 18 + TypeScript + Vite |
 | Deploy | AWS / TrueFoundry |
 
 ## Repo layout
@@ -68,7 +68,7 @@ make run-agent                # LiveKit agent worker
 # 4. frontend
 cd ../frontend
 npm install
-npm run dev                   # Vite on :5173
+npm run dev                   # React + Vite on :5173
 
 # 5. seed the demo dataset
 make seed-demo                # ingests data/demo/* via the ingestion path

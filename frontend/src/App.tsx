@@ -50,31 +50,57 @@ export function App() {
 
   const onSettings = () => toast("Settings — wired to GET /me · pending setup", "info");
 
-  return (
-    <div className="app" data-mode={state.mode}>
-      <TopNav mode={state.mode} onMode={onMode} onSettings={onSettings} />
+  // Sidebar collapse state, remembered across reloads.
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem("relay.sidebar") === "collapsed");
+  const toggleSidebar = () => {
+    setCollapsed((c) => {
+      const next = !c;
+      localStorage.setItem("relay.sidebar", next ? "collapsed" : "expanded");
+      return next;
+    });
+  };
 
-      <div className="workspace">
-        <Sidebar mode={state.mode} nav={nav} onNav={setNav} onNewAnalysis={onNewAnalysis} status={state.status} />
-        <main className="main">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={nav === "dashboard" ? `dash-${state.mode}` : nav}
-              className="view-wrap"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.28, ease: easeOut }}
-            >
-              {nav === "dashboard" && state.mode === "live" && <LiveView state={state} />}
-              {nav === "dashboard" && state.mode === "desk" && <DeskView state={state} onQuery={sendQuery} />}
-              {nav === "dashboard" && state.mode === "intake" && <IntakeView state={state} onRoute={routeLead} />}
-              {nav === "knowledge" && <KnowledgeView />}
-              {nav === "transcripts" && <TranscriptsView />}
-              {nav === "team" && <TeamView />}
-            </motion.div>
-          </AnimatePresence>
-        </main>
+  return (
+    <div className={`app${collapsed ? " collapsed" : ""}`} data-mode={state.mode}>
+      <Sidebar
+        mode={state.mode}
+        nav={nav}
+        onNav={setNav}
+        onNewAnalysis={onNewAnalysis}
+        status={state.status}
+        collapsed={collapsed}
+      />
+
+      <div className="app-main">
+        <TopNav
+          mode={state.mode}
+          onMode={onMode}
+          onSettings={onSettings}
+          onToggleSidebar={toggleSidebar}
+          collapsed={collapsed}
+        />
+
+        <div className="workspace">
+          <main className="main">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={nav === "dashboard" ? `dash-${state.mode}` : nav}
+                className="view-wrap"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.28, ease: easeOut }}
+              >
+                {nav === "dashboard" && state.mode === "live" && <LiveView state={state} />}
+                {nav === "dashboard" && state.mode === "desk" && <DeskView state={state} onQuery={sendQuery} />}
+                {nav === "dashboard" && state.mode === "intake" && <IntakeView state={state} onRoute={routeLead} />}
+                {nav === "knowledge" && <KnowledgeView />}
+                {nav === "transcripts" && <TranscriptsView />}
+                {nav === "team" && <TeamView />}
+              </motion.div>
+            </AnimatePresence>
+          </main>
+        </div>
       </div>
 
       <AnimatePresence>

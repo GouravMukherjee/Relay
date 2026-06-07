@@ -25,9 +25,10 @@ interface Props {
   onNav: (n: NavKey) => void;
   onNewAnalysis: () => void;
   status: "connecting" | "active" | "ended";
+  collapsed: boolean;
 }
 
-export function Sidebar({ mode, nav, onNav, onNewAnalysis, status }: Props) {
+export function Sidebar({ mode, nav, onNav, onNewAnalysis, status, collapsed }: Props) {
   return (
     <motion.aside
       className="sidebar"
@@ -35,11 +36,21 @@ export function Sidebar({ mode, nav, onNav, onNewAnalysis, status }: Props) {
       animate={{ x: 0, opacity: 1 }}
       transition={{ duration: 0.5, ease: easeOut }}
     >
+      <div className="sidebar-brand">
+        <img className="brand-logo" src="/relay-logo.png" alt="Relay" width={32} height={32} />
+        <span className="brand-name">Relay</span>
+      </div>
+
       <div className="sidebar-head">
         <h2 className="label-caps">{TITLES[mode]}</h2>
-        <motion.button className="btn-new" onClick={onNewAnalysis} {...pressable}>
+        <motion.button
+          className="btn-new"
+          onClick={onNewAnalysis}
+          title={collapsed ? "New Analysis" : undefined}
+          {...pressable}
+        >
           <Icon name="add" size={18} />
-          New Analysis
+          <span>New Analysis</span>
         </motion.button>
       </div>
 
@@ -49,26 +60,29 @@ export function Sidebar({ mode, nav, onNav, onNewAnalysis, status }: Props) {
             key={entry.key}
             className={`side-link${nav === entry.key ? " active" : ""}`}
             onClick={() => onNav(entry.key)}
+            title={collapsed ? entry.label : undefined}
             variants={itemLeft}
-            whileHover={{ x: 4 }}
+            whileHover={{ x: collapsed ? 0 : 4 }}
             whileTap={{ scale: 0.98 }}
           >
             <Icon name={entry.icon} size={20} fill={nav === entry.key} />
-            {entry.label}
+            <span>{entry.label}</span>
           </motion.button>
         ))}
       </motion.nav>
 
       <div className="sidebar-foot">
         {DEMO_MODE ? (
-          <span className="demo-flag">
+          <span className="demo-flag" title={collapsed ? "Demo engine" : undefined}>
             <Icon name="bolt" size={13} fill />
-            Demo engine
+            <span>Demo engine</span>
           </span>
         ) : (
           <span className="conn-flag" title={`Backend · ${BACKEND_HOST}`}>
             <span className={`conn-dot ${status}`} />
-            {status === "active" ? "Connected" : status === "connecting" ? "Connecting…" : "Offline"}
+            <span className="conn-label">
+              {status === "active" ? "Connected" : status === "connecting" ? "Connecting…" : "Offline"}
+            </span>
             <span className="conn-host mono">{BACKEND_HOST}</span>
           </span>
         )}

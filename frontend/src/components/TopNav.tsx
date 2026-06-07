@@ -15,9 +15,11 @@ interface Props {
   mode: Mode;
   onMode: (m: Mode) => void;
   onSettings: () => void;
+  onToggleSidebar: () => void;
+  collapsed: boolean;
 }
 
-export function TopNav({ mode, onMode, onSettings }: Props) {
+export function TopNav({ mode, onMode, onSettings, onToggleSidebar, collapsed }: Props) {
   const { call } = useBackend();
 
   return (
@@ -28,15 +30,17 @@ export function TopNav({ mode, onMode, onSettings }: Props) {
       transition={{ duration: 0.5, ease: easeOut }}
     >
       <div className="topnav-inner">
-        <motion.div
-          className="brand"
-          initial={{ opacity: 0, x: -10 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5, ease: easeOut, delay: 0.1 }}
-        >
-          <img className="brand-logo" src="/relay-logo.png" alt="Relay" width={32} height={32} />
-          <span className="brand-name">Relay</span>
-        </motion.div>
+        <div className="topnav-left">
+          <motion.button
+            className="nav-icon sidebar-toggle"
+            onClick={onToggleSidebar}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            {...iconHover}
+          >
+            <Icon name={collapsed ? "menu" : "menu_open"} size={22} />
+          </motion.button>
+        </div>
 
         <div className="modeswitch">
           {MODES.map((m) => (

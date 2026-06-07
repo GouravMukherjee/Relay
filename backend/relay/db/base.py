@@ -40,10 +40,42 @@ from relay.config import settings
 
 # settings.database_url must use the asyncpg driver, e.g.
 #   postgresql+asyncpg://user:pass@host:5432/relay
+
+
+def _engine_connect_args(url: str) -> dict:
+    """Build asyncpg ``connect_args`` for *url*.
+
+    - Managed Postgres (Supabase et al.) requires TLS, and asyncpg does NOT infer
+      it from the URL — attach a default SSL context for any non-local host.
+    - The Supabase transaction pooler (pgBouncer, port 6543) does not support
+      prepared statements; disable asyncpg's statement cache when targeting it.
+    """
+    args: dict = {}
+    lowered = url.lower()
+    is_local = (
+        "@localhost" in lowered or "@127.0.0.1" in lowered or "@postgres:" in lowered
+    )
+    if not is_local:
+        import ssl as _ssl
+
+        # TLS required by managed Postgres (Supabase). Encrypt but do NOT verify the
+        # CA chain — equivalent to libpq sslmode=require (the mode Supabase's own
+        # connection strings use). Avoids "self-signed certificate in chain" on the
+        # pooler / networks without the full CA bundle.
+        ctx = _ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = _ssl.CERT_NONE
+        args["ssl"] = ctx
+    if ":6543" in url:  # pgBouncer transaction-pooling mode
+        args["statement_cache_size"] = 0
+    return args
+
+
 engine = create_async_engine(
     settings.database_url,
     pool_pre_ping=True,
     future=True,
+    connect_args=_engine_connect_args(settings.database_url),
 )
 
 async_session_maker: async_sessionmaker[AsyncSession] = async_sessionmaker(

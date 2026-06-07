@@ -90,7 +90,6 @@ async def _bootstrap_principal(claims: Claims) -> Claims:
 
     from relay.db.base import privileged_session
     from relay.db.models import Organization, OrgMembership, User
-    from relay.ids import new_id
 
     async with privileged_session() as session:
         user = await session.get(User, claims.user_id)
@@ -115,13 +114,18 @@ async def _bootstrap_principal(claims: Claims) -> Claims:
 
         created_org = False
         if not org_id:
-            # Brand-new principal -> spin up their org.
-            org = Organization(
-                id=new_id_uuid(),
-                name=(claims.email or "My Organization"),
+            org_id = new_id_uuid()
+            created_org = True
+
+        # Ensure the Organization row exists before inserting the user/membership.
+        # The claim may carry an org_id that is not yet provisioned (e.g. the default
+        # demo org on a fresh database), which would otherwise FK-violate. Idempotent
+        # get-or-create; the unit-of-work inserts the org before the dependent rows.
+        org = await session.get(Organization, org_id)
+        if org is None:
+            session.add(
+                Organization(id=org_id, name=(claims.email or "My Organization"))
             )
-            session.add(org)
-            org_id = org.id
             created_org = True
 
         if user is None:
@@ -147,7 +151,7 @@ async def _bootstrap_principal(claims: Claims) -> Claims:
         if membership is None:
             session.add(
                 OrgMembership(
-                    id=new_id("mem"),
+                    id=new_id_uuid(),  # control-plane PK is a uuid (not a prefixed id)
                     organization_id=org_id,
                     user_id=claims.user_id,
                     role="owner" if created_org else (claims.role or "member"),

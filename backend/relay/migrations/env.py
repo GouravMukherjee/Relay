@@ -71,10 +71,13 @@ def _do_run_migrations(connection: Connection) -> None:
 
 async def run_migrations_online() -> None:
     """Run migrations with an async engine (asyncpg)."""
+    from relay.db.base import _engine_connect_args
+
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=_engine_connect_args(settings.database_url),
     )
     async with connectable.connect() as connection:
         await connection.run_sync(_do_run_migrations)

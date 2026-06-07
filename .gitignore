@@ -9,6 +9,7 @@ ruvector.db
 
 # Build output
 frontend/dist
+frontend/node_modules
 backend/dist
 
 # Secrets / env — never commit real values (.env.example is the template)

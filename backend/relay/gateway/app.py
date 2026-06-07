@@ -48,7 +48,8 @@ app.add_middleware(
     allow_origins=[
         "https://https://lepmbgtxjduuoiwvdaww.supabase.co",                                    # local dev
         "https://relay-pg1psok2k-cyr0zxs-projects.vercel.app",    # your vercel preview
-        "https://api.riyanshomelab.com",                      # prod when you have it
+        "https://api.riyanshomelab.com",
+        "https://relay-omega-five.vercel.app",                      # prod when you have it
     ],
     allow_credentials=True,
     allow_methods=["*"],

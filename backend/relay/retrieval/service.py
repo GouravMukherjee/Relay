@@ -114,7 +114,17 @@ class CompositeRetrievalService(RetrievalService):
                 extra={"org_id": org_id, "error": str(exc)},
             )
 
-        fallback_result = await self._fallback.query(org_id, text, k=k)
+        if self._fallback is self._primary:
+            # Moss-only composition (no distinct fallback) — nothing more to try.
+            return RetrievalResult(chunks=[], backend="moss")
+        try:
+            fallback_result = await self._fallback.query(org_id, text, k=k)
+        except Exception as exc:  # noqa: BLE001 — e.g. embeddings unavailable
+            logger.warning(
+                "pgvector fallback failed; returning empty result",
+                extra={"org_id": org_id, "error": str(exc)},
+            )
+            return RetrievalResult(chunks=[], backend="pgvector")
         log_latency(
             logger,
             "retrieval",

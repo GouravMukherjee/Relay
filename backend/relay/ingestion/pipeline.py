@@ -144,10 +144,26 @@ async def ingest_document(
         )
 
         # ------------------------------------------------------------------
-        # Step 4: Embed (single batch)
+        # Step 4: Embed (single batch) — OPTIONAL.
+        # Moss embeds server-side, so embeddings are only needed to populate the
+        # pgvector fallback. If the embeddings service is unavailable/misconfigured,
+        # proceed with NULL vectors and rely on Moss (the live retrieval path).
         # ------------------------------------------------------------------
+        vectors: list[list[float] | None]
         t_embed_start = time.monotonic()
-        vectors = await embeddings.embed(texts)
+        try:
+            embedded = await embeddings.embed(texts)
+            if len(embedded) != len(texts):
+                raise ValueError(
+                    f"Embeddings returned {len(embedded)} vectors for {len(texts)} chunks."
+                )
+            vectors = list(embedded)
+        except Exception as exc:  # noqa: BLE001 — embeddings optional in the Moss-first path
+            logger.warning(
+                "embeddings unavailable; indexing to Moss without pgvector vectors",
+                extra={"document_id": document_id, "error": str(exc)},
+            )
+            vectors = [None] * len(texts)
         t_embed_ms = (time.monotonic() - t_embed_start) * 1000
         log_latency(
             logger,
@@ -156,11 +172,6 @@ async def ingest_document(
             document_id=document_id,
             batch_size=len(texts),
         )
-
-        if len(vectors) != len(texts):
-            raise ValueError(
-                f"Embeddings returned {len(vectors)} vectors for {len(texts)} chunks."
-            )
 
         # ------------------------------------------------------------------
         # Step 5: Delete existing chunks (idempotency)
@@ -221,7 +232,10 @@ async def ingest_document(
         # Step 7: Index into Moss + pgvector via RetrievalService.index
         # ------------------------------------------------------------------
         t_index_start = time.monotonic()
-        await retrieval.index(retrieved_chunks)
+        if hasattr(retrieval, "index_with_org"):
+            await retrieval.index_with_org(retrieved_chunks, org_id=org_id)  # type: ignore[attr-defined]
+        else:
+            await retrieval.index(retrieved_chunks)
         t_index_ms = (time.monotonic() - t_index_start) * 1000
         log_latency(
             logger,

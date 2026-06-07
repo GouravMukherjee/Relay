@@ -122,7 +122,11 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     # Unsiloed (document parsing)
     # ------------------------------------------------------------------
-    unsiloed_api_key: str = Field(default="", description="Unsiloed API key.")
+    unsiloed_api_key: str = Field(default="", description="Unsiloed API key (api-key header).")
+    unsiloed_base_url: str = Field(
+        default="https://prod.visionapi.unsiloed.ai",
+        description="Unsiloed vision API base URL.",
+    )
 
     # ------------------------------------------------------------------
     # TrueFoundry AI Gateway (LLM routing)

@@ -160,6 +160,26 @@ class CompositeRetrievalService(RetrievalService):
             # Surface the Moss failure once pgvector durability is guaranteed.
             raise primary_error
 
+    async def index_with_org(self, chunks: list[RetrievedChunk], *, org_id: str) -> None:
+        """Index *chunks* tagged with ``org_id`` into Moss (primary), pgvector best-effort.
+
+        Moss embeds server-side, so this works without an embeddings service. The pgvector
+        write is attempted only if the fallback supports plain indexing; failures there are
+        non-fatal (Moss is the live path).
+        """
+        if not chunks:
+            return
+        primary = self._primary
+        if hasattr(primary, "index_with_org"):
+            await primary.index_with_org(chunks, org_id=org_id)  # type: ignore[attr-defined]
+        else:
+            await primary.index(chunks)
+        if self._fallback is not self._primary:
+            try:
+                await self._fallback.index(chunks)
+            except Exception as exc:  # noqa: BLE001 — pgvector needs embeddings; non-fatal
+                logger.info("pgvector index skipped", extra={"error": str(exc)})
+
     async def delete(self, document_id: str) -> None:
         """Remove all chunks for *document_id* from both backends (idempotent)."""
         primary_error: Exception | None = None

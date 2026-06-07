@@ -3,8 +3,9 @@
 Two verification paths share a single code path (HS256 is NOT a "fallback" —
 it is a first-class branch chosen by the token's ``alg`` header):
 
-1. **RS256** — production Supabase access tokens. We fetch the project JWKS
-   (``{supabase_url}/auth/v1/.well-known/jwks.json``) with httpx, cache the
+1. **ES256 / RS256** — production Supabase access tokens (Supabase's modern
+   asymmetric signing keys are ES256; older projects use RS256). We fetch the
+   project JWKS (``{supabase_url}/auth/v1/.well-known/jwks.json``), cache the
    ``PyJWKClient``, and verify the signature against the matching ``kid``.
 
 2. **HS256** — local/test tokens minted with ``settings.supabase_jwt_secret``
@@ -160,13 +161,16 @@ def _decode(token: str) -> dict[str, Any]:
         except InvalidTokenError as exc:
             raise AuthError(f"HS256 verification failed: {exc}") from exc
 
-    if alg == "RS256":
+    # Asymmetric algorithms verified via the project's JWKS. Supabase signs access
+    # tokens with ES256 (modern asymmetric signing keys) or RS256 depending on the
+    # project's key type — both publish their public key at the JWKS endpoint.
+    if alg in ("ES256", "RS256"):
         try:
             signing_key = _jwks_client().get_signing_key_from_jwt(token)
             return jwt.decode(
                 token,
                 signing_key.key,
-                algorithms=["RS256"],
+                algorithms=["ES256", "RS256"],
                 options=options,
                 issuer=issuer,
                 leeway=leeway,
@@ -174,9 +178,9 @@ def _decode(token: str) -> dict[str, Any]:
         except AuthError:
             raise
         except InvalidTokenError as exc:
-            raise AuthError(f"RS256 verification failed: {exc}") from exc
+            raise AuthError(f"{alg} verification failed: {exc}") from exc
         except Exception as exc:  # JWKS fetch / key errors
-            raise AuthError(f"could not verify RS256 token: {exc}") from exc
+            raise AuthError(f"could not verify {alg} token: {exc}") from exc
 
     raise AuthError(f"unsupported token alg: {alg!r}")
 

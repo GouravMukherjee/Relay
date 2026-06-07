@@ -1,0 +1,13 @@
+import { chromium } from "playwright";
+const b = await chromium.launch();
+const p = await b.newPage({ viewport: { width: 1440, height: 850 } });
+await p.goto("http://localhost:5173/", { waitUntil: "networkidle" });
+await p.waitForTimeout(900);
+await p.locator(".avatar").click();
+await p.waitForTimeout(450);
+console.log("menuVisible:", await p.locator(".account-menu").isVisible());
+console.log("email:", await p.locator(".account-email").innerText());
+console.log("signout disabled:", await p.locator(".account-action").isDisabled());
+await p.screenshot({ path: "acct_demo.png", clip: { x: 1050, y: 0, width: 390, height: 300 } });
+await b.close();
+console.log("done");

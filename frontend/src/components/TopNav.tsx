@@ -3,7 +3,8 @@ import type { Mode } from "../types";
 import { api } from "../api/client";
 import { useBackend } from "../backend";
 import { Icon } from "./Icon";
-import { easeOut, iconHover, pressable } from "../motion";
+import { AccountMenu } from "./AccountMenu";
+import { easeOut, iconHover } from "../motion";
 
 const MODES: { id: Mode; label: string }[] = [
   { id: "live", label: "Live" },
@@ -17,9 +18,11 @@ interface Props {
   onSettings: () => void;
   onToggleSidebar: () => void;
   collapsed: boolean;
+  email: string | null;
+  onSignOut?: () => void;
 }
 
-export function TopNav({ mode, onMode, onSettings, onToggleSidebar, collapsed }: Props) {
+export function TopNav({ mode, onMode, onSettings, onToggleSidebar, collapsed, email, onSignOut }: Props) {
   const { call } = useBackend();
 
   return (
@@ -71,14 +74,7 @@ export function TopNav({ mode, onMode, onSettings, onToggleSidebar, collapsed }:
           <motion.button className="nav-icon" title="Settings" onClick={onSettings} {...iconHover}>
             <Icon name="settings" size={22} />
           </motion.button>
-          <motion.button
-            className="avatar"
-            title="Account"
-            onClick={() => call("Account", () => api.getMe(), { endpoint: "GET /me" })}
-            {...pressable}
-          >
-            RA
-          </motion.button>
+          <AccountMenu email={email} onSignOut={onSignOut} />
         </div>
       </div>
     </motion.nav>

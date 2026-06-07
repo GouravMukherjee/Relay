@@ -25,9 +25,18 @@ const LoginGateLazy = lazy(() =>
   import("./auth/LoginGate").then((m) => ({ default: m.LoginGate }))
 );
 
+const AuthBridgeLazy = lazy(() =>
+  import("./auth/AuthBridge").then((m) => ({ default: m.AuthBridge }))
+);
+
+interface Account {
+  email: string | null;
+  onSignOut: () => void | Promise<void>;
+}
+
 // ── Main dashboard ────────────────────────────────────────────────────────────
 
-function Dashboard() {
+function Dashboard({ account }: { account?: Account }) {
   const { state, setMode, sendQuery, routeLead, playNextBeat, canPlayBeat } =
     useRelaySession("live");
   const { call, toast } = useBackend();
@@ -92,6 +101,8 @@ function Dashboard() {
           onSettings={onSettings}
           onToggleSidebar={toggleSidebar}
           collapsed={collapsed}
+          email={account?.email ?? null}
+          onSignOut={account?.onSignOut}
         />
 
         <div className="workspace">
@@ -148,12 +159,13 @@ export function App() {
     return <Dashboard />;
   }
 
-  // Real backend path: wrap in lazily-loaded AuthProvider + LoginGate.
+  // Real backend path: wrap in lazily-loaded AuthProvider + LoginGate, and bridge
+  // the authenticated session (email + signOut) into the Dashboard via props.
   return (
     <Suspense fallback={<div className="login-loading"><span>Loading…</span></div>}>
       <AuthProviderLazy>
         <LoginGateLazy>
-          <Dashboard />
+          <AuthBridgeLazy>{(account) => <Dashboard account={account} />}</AuthBridgeLazy>
         </LoginGateLazy>
       </AuthProviderLazy>
     </Suspense>

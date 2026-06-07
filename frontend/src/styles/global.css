@@ -630,6 +630,34 @@ input {
   background: var(--primary-container);
   border: 1px solid var(--surface-container-lowest);
 }
+/* Live: mic is publishing. Brand-filled with a pulsing "recording" dot. */
+.mic-btn.mic-on {
+  background: var(--primary, #4f46e5);
+  border-color: var(--primary, #4f46e5);
+}
+.mic-btn.mic-on .ms {
+  color: #fff;
+}
+.mic-btn.mic-on .mic-dot {
+  background: #ef4444;
+  border-color: #fff;
+  animation: mic-pulse 1.4s ease-in-out infinite;
+}
+.mic-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+@keyframes mic-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.6;
+  }
+}
 
 /* Waveform */
 .waveform {

@@ -37,6 +37,10 @@ export interface RelaySessionState {
   dismissed: Set<string>;
   lead: Lead | null;
   lastError: string | null;
+  /** True while the local microphone is publishing to the LiveKit room. */
+  micEnabled: boolean;
+  /** True while connecting/disconnecting the LiveKit room (debounces the toggle). */
+  micBusy: boolean;
 }
 
 export function useRelaySession(initialMode: Mode) {
@@ -52,11 +56,21 @@ export function useRelaySession(initialMode: Mode) {
     dismissed: new Set(),
     lead: null,
     lastError: null,
+    micEnabled: false,
+    micBusy: false,
   });
 
   const transportRef = useRef<RelayTransport | null>(null);
   // LiveKit room: publishes the mic so the agent worker transcribes live audio.
+  // Created lazily on the first toggleMic() — NEVER on mount, so simply opening
+  // the app does not publish audio (which would run STT and burn credits).
   const roomRef = useRef<import("livekit-client").Room | null>(null);
+  // LiveKit access token from createSession, stashed for the lazy room connect.
+  const livekitTokenRef = useRef<string | null>(null);
+  // <audio> elements created for subscribed remote tracks, so we can detach them.
+  const audioElsRef = useRef<HTMLMediaElement[]>([]);
+  // Guards against overlapping connect/disconnect from rapid button clicks.
+  const micBusyRef = useRef(false);
 
   const handleEvent = useCallback((e: ServerEvent) => {
     setState((s) => {
@@ -121,24 +135,12 @@ export function useRelaySession(initialMode: Mode) {
           : rawWsUrl;
         transport = new WsTransport(fullWsUrl);
 
-        // Best-effort: join the LiveKit room and publish the mic so the agent
-        // worker can transcribe live audio. Audio failure is non-fatal — the
-        // session still works with manual queries + the card/transcript WS.
-        if (res.livekit_token && LIVEKIT_URL) {
-          try {
-            const { Room } = await import("livekit-client");
-            const room = new Room();
-            await room.connect(LIVEKIT_URL, res.livekit_token);
-            if (disposed) {
-              await room.disconnect();
-              return;
-            }
-            await room.localParticipant.setMicrophoneEnabled(true);
-            roomRef.current = room;
-          } catch (audioErr) {
-            console.warn("Relay: LiveKit audio unavailable —", audioErr);
-          }
-        }
+        // Stash the LiveKit token for an explicit, user-initiated mic start.
+        // We DELIBERATELY do not connect the room or enable the mic here:
+        // publishing audio on mount runs STT continuously and burns credits,
+        // and the user has no way to consent. Live audio starts only when the
+        // user clicks the mic button (see toggleMic).
+        livekitTokenRef.current = res.livekit_token ?? null;
       } catch (e) {
         if (disposed) return;
         const msg = (e as { message?: string })?.message ?? "request failed";
@@ -164,8 +166,13 @@ export function useRelaySession(initialMode: Mode) {
       disposed = true;
       transportRef.current?.close();
       transportRef.current = null;
+      // Tear down LiveKit so the mic stops publishing and remote audio stops
+      // playing when the session unmounts (mode switch, sign-out, navigation).
+      audioElsRef.current.forEach((el) => el.remove());
+      audioElsRef.current = [];
       void roomRef.current?.disconnect();
       roomRef.current = null;
+      micBusyRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -179,6 +186,98 @@ export function useRelaySession(initialMode: Mode) {
 
   const sendQuery = useCallback((text: string) => {
     transportRef.current?.send({ type: "query.manual", data: { text } });
+  }, []);
+
+  // Start/stop live audio. This is the ONLY place the LiveKit room is created or
+  // the mic is enabled — turning it off fully disconnects the room so no audio is
+  // published (STT stops) and remote playback ends. Idempotent under rapid clicks.
+  const toggleMic = useCallback(async () => {
+    if (micBusyRef.current) return; // ignore clicks while a transition is in flight
+    const room = roomRef.current;
+
+    // ── Stop: disconnect the room, detach audio, drop the mic. ──
+    if (room) {
+      micBusyRef.current = true;
+      setState((s) => ({ ...s, micBusy: true }));
+      try {
+        await room.disconnect();
+      } catch {
+        /* best-effort */
+      }
+      audioElsRef.current.forEach((el) => el.remove());
+      audioElsRef.current = [];
+      roomRef.current = null;
+      micBusyRef.current = false;
+      setState((s) => ({ ...s, micEnabled: false, micBusy: false }));
+      return;
+    }
+
+    // ── Start: connect, subscribe to remote audio, publish the mic. ──
+    const token = livekitTokenRef.current;
+    if (!token || !LIVEKIT_URL) {
+      setState((s) => ({
+        ...s,
+        lastError: "Live audio isn't configured for this session.",
+      }));
+      return;
+    }
+
+    micBusyRef.current = true;
+    setState((s) => ({ ...s, micBusy: true }));
+    try {
+      const { Room, RoomEvent, Track } = await import("livekit-client");
+      const r = new Room();
+
+      // Play subscribed remote audio (the live conversation / whisper-back) by
+      // attaching each audio track to a hidden <audio> element. Without this the
+      // tracks are received but never heard.
+      r.on(RoomEvent.TrackSubscribed, (track) => {
+        if (track.kind === Track.Kind.Audio) {
+          const el = track.attach();
+          el.autoplay = true;
+          el.style.display = "none";
+          document.body.appendChild(el);
+          audioElsRef.current.push(el);
+        }
+      });
+      r.on(RoomEvent.TrackUnsubscribed, (track) => {
+        track.detach().forEach((el) => {
+          el.remove();
+          audioElsRef.current = audioElsRef.current.filter((e) => e !== el);
+        });
+      });
+      // If the room drops server-side, reflect that the mic is no longer live.
+      r.on(RoomEvent.Disconnected, () => {
+        audioElsRef.current.forEach((el) => el.remove());
+        audioElsRef.current = [];
+        roomRef.current = null;
+        setState((s) => ({ ...s, micEnabled: false }));
+      });
+
+      await r.connect(LIVEKIT_URL, token);
+      // Browsers gate autoplay until a user gesture — this toggle is one, so
+      // unblock playback of the subscribed remote audio.
+      try {
+        await r.startAudio();
+      } catch {
+        /* will play once the browser allows it */
+      }
+      await r.localParticipant.setMicrophoneEnabled(true);
+      roomRef.current = r;
+      micBusyRef.current = false;
+      setState((s) => ({ ...s, micEnabled: true, micBusy: false, lastError: null }));
+    } catch (e) {
+      const msg = (e as { message?: string })?.message ?? "audio failed";
+      void roomRef.current?.disconnect();
+      roomRef.current = null;
+      micBusyRef.current = false;
+      setState((s) => ({
+        ...s,
+        micEnabled: false,
+        micBusy: false,
+        lastError: `Couldn't start live audio — ${msg}`,
+      }));
+    }
   }, []);
 
   const pinCard = useCallback((card_id: string) => {
@@ -207,5 +306,5 @@ export function useRelaySession(initialMode: Mode) {
     });
   }, []);
 
-  return { state, setMode, sendQuery, pinCard, dismissCard, routeLead };
+  return { state, setMode, sendQuery, pinCard, dismissCard, routeLead, toggleMic };
 }

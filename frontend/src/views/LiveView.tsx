@@ -12,9 +12,10 @@ import { easeOut, fadeUp, iconHover, item, pressable } from "../motion";
 interface Props {
   state: RelaySessionState;
   onQuery: (text: string) => void;
+  onToggleMic: () => void;
 }
 
-export function LiveView({ state, onQuery }: Props) {
+export function LiveView({ state, onQuery, onToggleMic }: Props) {
   const { call } = useBackend();
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -32,13 +33,6 @@ export function LiveView({ state, onQuery }: Props) {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [state.utterances, state.partial]);
-
-  const onMic = () =>
-    state.sessionId &&
-    call("Join audio room", () => api.livekitToken(state.sessionId!), {
-      endpoint: `POST /sessions/${state.sessionId}/livekit-token`,
-      success: "Joined LiveKit room",
-    });
 
   const onUpload = (file: File) =>
     call("Upload document", () => api.uploadDocument(file, file.name), {
@@ -60,9 +54,16 @@ export function LiveView({ state, onQuery }: Props) {
             <h2 className="label-caps">Live Call</h2>
             <div className="call-status">
               <span className="mono call-timer">{new Date().toTimeString().slice(0, 5)}</span>
-              <motion.button className="mic-btn" title="Join / toggle microphone" onClick={onMic} {...iconHover}>
-                <Icon name="mic" size={18} />
-                <span className="mic-dot" />
+              <motion.button
+                className={`mic-btn${state.micEnabled ? " mic-on" : ""}`}
+                title={state.micEnabled ? "Stop live audio" : "Start live audio"}
+                aria-pressed={state.micEnabled}
+                onClick={onToggleMic}
+                disabled={state.micBusy}
+                {...iconHover}
+              >
+                <Icon name={state.micEnabled ? "mic" : "mic_off"} size={18} />
+                {state.micEnabled && <span className="mic-dot" />}
               </motion.button>
             </div>
           </div>

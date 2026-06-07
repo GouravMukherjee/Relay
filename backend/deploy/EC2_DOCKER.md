@@ -1,26 +1,24 @@
 # Deploy the Relay backend on EC2 / a Docker VM
 
-Runs the full backend (Redis + gateway + agent + ingest + Caddy auto‑HTTPS) from
-one image with `docker-compose.prod.yml`. Postgres + Auth stay on **Supabase**;
-S3 stays on **AWS**; LLM via the **TrueFoundry gateway**; STT via **LiveKit
-Inference**. Nothing here needs a local Postgres.
+Runs the full backend (Redis + gateway + agent + ingest) from one image with
+`docker-compose.yml`. The gateway is published **directly on port 8000** — no
+reverse proxy. Postgres + Auth stay on **Supabase**; S3 stays on **AWS**; LLM via
+the **TrueFoundry gateway**; STT via **LiveKit Inference**. Nothing here needs a
+local Postgres.
 
 ```
-Internet ──443/80──▶ Caddy (TLS) ──▶ gateway:8000 (REST + WS)
-                                      ├─ redis (queue/cache)
-                                      ├─ agent  → LiveKit Cloud (outbound)
-                                      └─ ingest → S3 / Unsiloed / Moss
+Internet ──8000──▶ gateway:8000 (REST + WS)
+                    ├─ redis (queue/cache)
+                    ├─ agent  → LiveKit Cloud (outbound)
+                    └─ ingest → S3 / Unsiloed / Moss
 gateway/agent/ingest ──▶ Supabase Postgres (DATABASE_URL)  ·  S3  ·  TFY gateway
 ```
 
 ## 1. Provision the VM
 
 - Ubuntu 22.04+ EC2 (t3.small/medium is plenty). Attach an **Elastic IP**.
-- **Security group inbound:** `22` (your IP only), `80` and `443` (`0.0.0.0/0`,
-  for Caddy + ACME). No other ports — gateway 8000 is internal to the compose net.
-- A hostname that resolves to the IP. Either a real domain (`api.yourdomain.com`)
-  or, for a quick demo with no DNS, use **`<elastic-ip>.nip.io`** (resolves to the
-  IP automatically; Caddy can still get a Let's Encrypt cert for it).
+- **Security group inbound:** `22` (your IP only) and `8000` (`0.0.0.0/0`, the
+  gateway). No other ports.
 
 ## 2. Install Docker
 
@@ -54,59 +52,72 @@ $EDITOR .env            # fill every key (or scp your filled .env up)
 ## 4. Launch
 
 ```bash
-export RELAY_DOMAIN=api.yourdomain.com        # or <elastic-ip>.nip.io
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose up -d --build
 ```
 
 Apply the DB schema once (idempotent; safe even if already migrated):
 
 ```bash
-docker compose -f docker-compose.prod.yml run --rm migrate
+docker compose run --rm migrate
 ```
 
 ## 5. Verify
 
 ```bash
-curl https://$RELAY_DOMAIN/health            # -> {"status":"ok"}
-docker compose -f docker-compose.prod.yml ps
-docker compose -f docker-compose.prod.yml logs -f gateway   # and: agent, ingest, caddy
+curl http://localhost:8000/health            # -> {"status":"ok"}
+docker compose ps
+docker compose logs -f gateway               # and: agent, ingest
 ```
 
 A deeper check (auth + Supabase + RLS), from any machine with the JWT secret:
-mint an HS256 token with `SUPABASE_JWT_SECRET` and `GET https://$RELAY_DOMAIN/api/v1/documents`
+mint an HS256 token with `SUPABASE_JWT_SECRET` and `GET http://<host>:8000/api/v1/documents`
 → `200 {"documents":[]}` (matches the local smoke test).
 
 ## 6. Point the frontend at it (Vercel)
 
-Set on Vercel (Production + Preview) and redeploy:
+The frontend is served over **HTTPS** and the gateway is plain **HTTP** on `:8000`,
+so the browser would block a direct `https → http` call (mixed content). Route REST
+through the **Vercel rewrite proxy** instead — `frontend/vercel.json` proxies
+`/api/*` to the backend server-side, so the browser only ever talks to the HTTPS
+Vercel origin. Set the rewrite destination to your backend and configure:
+
+```jsonc
+// frontend/vercel.json
+{ "source": "/api/:path*", "destination": "http://<elastic-ip>:8000/api/:path*" }
 ```
-VITE_DEMO_MODE=false
-VITE_BACKEND_URL=https://api.yourdomain.com      # == RELAY_DOMAIN, https
-VITE_LIVEKIT_URL=wss://<your-project>.livekit.cloud
+```
+# Vercel env (Production + Preview), then redeploy
+VITE_BACKEND_URL=http://<elastic-ip>:8000
+VITE_API_BASE=/api/v1                              # REST via the same-origin proxy
 VITE_SUPABASE_URL=https://<ref>.supabase.co
 VITE_SUPABASE_ANON_KEY=<anon key>
 ```
+
+> **WebSockets / live audio caveat:** a browser on an HTTPS page can't open a plain
+> `ws://` connection, and Vercel can't proxy WebSockets. So the live transcript/card
+> stream (and LiveKit audio) needs TLS in front of the gateway. Without a reverse
+> proxy here, terminate TLS at a **cloud load balancer** (e.g. an AWS ALB or
+> Cloudflare in front of `:8000`) and point `VITE_WS_BASE=wss://…` at it. REST +
+> manual queries work fine over the HTTP proxy above; only the realtime WS path
+> needs the TLS endpoint.
+
 Ensure the gateway's `FRONTEND_ORIGIN` includes the exact Vercel origin (CORS + WS
-origin check). REST resolves to `<VITE_BACKEND_URL>/api/v1` and WS to `wss://…/ws/...`
-automatically (see `frontend/src/config.ts`).
+origin check).
 
 ## Operate
 
 ```bash
 # update to latest code
-git pull && docker compose -f docker-compose.prod.yml up -d --build
+git pull && docker compose up -d --build
 # restart one service
-docker compose -f docker-compose.prod.yml restart gateway
+docker compose restart gateway
 # tail logs / stop everything
-docker compose -f docker-compose.prod.yml logs -f
-docker compose -f docker-compose.prod.yml down
+docker compose logs -f
+docker compose down
 ```
 
 ## Notes & caveats
 
-- **HTTPS is required** because the frontend is HTTPS — browsers block HTTPS→HTTP.
-  Caddy handles TLS via `RELAY_DOMAIN`; a bare IP without a hostname can't get a
-  trusted cert (use a domain or `nip.io`).
 - **Agent / live audio:** `agent` runs `relay.agent.worker start` and uses LiveKit
   Inference STT (`LIVEKIT_STT_MODEL`). If `livekit-agents` in the image predates the
   inference-STT string form, check `docker compose logs agent` and pin a newer

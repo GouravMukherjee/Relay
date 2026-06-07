@@ -1,15 +1,17 @@
-# Relay backend — single-VM production stack (EC2 or any Docker host).
+# Relay backend — single-VM container stack (EC2 or any Docker host).
 #
 # Postgres is NOT here: the app uses Supabase (DATABASE_URL in .env). This stack
-# runs Redis + the three app processes from ONE image, fronted by Caddy for
-# automatic HTTPS/WSS (required because the Vercel frontend is HTTPS).
+# runs Redis + the three app processes from ONE image. The gateway is published
+# directly on port 8000 — no reverse proxy / TLS termination here. If you need
+# HTTPS, put the backend behind a load balancer, or front it with the Vercel
+# rewrite proxy (frontend/vercel.json), which proxies the browser's HTTPS calls
+# to this plain-HTTP backend.
 #
-# Quick start (on the VM):
+# Quick start (on the host):
 #   cp .env.example .env && $EDITOR .env          # fill every key
-#   export RELAY_DOMAIN=api.yourdomain.com        # or <elastic-ip>.nip.io
-#   docker compose -f docker-compose.prod.yml up -d --build
-#   docker compose -f docker-compose.prod.yml run --rm migrate   # once (idempotent)
-#   curl https://$RELAY_DOMAIN/health             # -> {"status":"ok"}
+#   docker compose up -d --build
+#   docker compose run --rm migrate               # once (idempotent)
+#   curl http://localhost:8000/health             # -> {"status":"ok"}
 #
 # Notes:
 # - REDIS_URL is overridden to the in-network redis service (the .env value points
@@ -43,12 +45,12 @@ services:
       timeout: 3s
       retries: 10
 
-  # Public REST + WebSocket hub. Not published to the host — Caddy fronts it.
+  # Public REST + WebSocket hub, published directly on the host's port 8000.
   gateway:
     <<: *relay
     command: uvicorn relay.gateway.app:app --host 0.0.0.0 --port 8000
-    expose:
-      - "8000"
+    ports:
+      - "8000:8000"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
       interval: 15s
@@ -70,25 +72,8 @@ services:
     <<: *relay
     command: arq relay.ingestion.worker.WorkerSettings
 
-  # Caddy: automatic TLS for $RELAY_DOMAIN, reverse-proxies REST + WS to gateway.
-  caddy:
-    image: caddy:2
-    restart: unless-stopped
-    depends_on:
-      gateway:
-        condition: service_started
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      - RELAY_DOMAIN=${RELAY_DOMAIN:-localhost}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-
   # One-off schema migration against Supabase. Run explicitly:
-  #   docker compose -f docker-compose.prod.yml run --rm migrate
+  #   docker compose run --rm migrate
   migrate:
     <<: *relay
     command: alembic -c alembic.ini upgrade head
@@ -98,5 +83,3 @@ services:
 
 volumes:
   redis_data:
-  caddy_data:
-  caddy_config:

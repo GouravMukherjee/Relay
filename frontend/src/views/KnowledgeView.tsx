@@ -11,7 +11,7 @@ import { fadeUp, inView, item, pressable, staggerParent } from "../motion";
 const ACCEPT = ".pdf,.docx,.txt,.md,.html,.csv,.pptx,.xlsx";
 
 export function KnowledgeView() {
-  const { call, toast } = useBackend();
+  const { call } = useBackend();
   const { data, loading, error, demo, reload } = useResource(
     () => api.listDocuments().then((r) => r.documents),
     DEMO_DOCS,

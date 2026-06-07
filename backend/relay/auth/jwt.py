@@ -141,6 +141,8 @@ def _decode(token: str) -> dict[str, Any]:
 
     # Common options. We require exp; aud is verified leniently below.
     options = {"require": ["exp"], "verify_aud": False}
+    # Tolerate small issuer/verifier clock skew on exp/iat/nbf (seconds).
+    leeway = 30
 
     if alg == "HS256":
         secret = settings.supabase_jwt_secret
@@ -153,6 +155,7 @@ def _decode(token: str) -> dict[str, Any]:
                 algorithms=["HS256"],
                 options=options,
                 issuer=issuer,
+                leeway=leeway,
             )
         except InvalidTokenError as exc:
             raise AuthError(f"HS256 verification failed: {exc}") from exc
@@ -166,6 +169,7 @@ def _decode(token: str) -> dict[str, Any]:
                 algorithms=["RS256"],
                 options=options,
                 issuer=issuer,
+                leeway=leeway,
             )
         except AuthError:
             raise

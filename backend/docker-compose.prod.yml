@@ -1,0 +1,102 @@
+# Relay backend — single-VM production stack (EC2 or any Docker host).
+#
+# Postgres is NOT here: the app uses Supabase (DATABASE_URL in .env). This stack
+# runs Redis + the three app processes from ONE image, fronted by Caddy for
+# automatic HTTPS/WSS (required because the Vercel frontend is HTTPS).
+#
+# Quick start (on the VM):
+#   cp .env.example .env && $EDITOR .env          # fill every key
+#   export RELAY_DOMAIN=api.yourdomain.com        # or <elastic-ip>.nip.io
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml run --rm migrate   # once (idempotent)
+#   curl https://$RELAY_DOMAIN/health             # -> {"status":"ok"}
+#
+# Notes:
+# - REDIS_URL is overridden to the in-network redis service (the .env value points
+#   at localhost, which inside a container is the container itself).
+# - .env is read at `up` time and injected as env — secrets are never baked into
+#   the image (see .dockerignore).
+
+x-relay: &relay
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: relay-backend:latest
+  restart: unless-stopped
+  env_file: [.env]
+  environment:
+    - REDIS_URL=redis://redis:6379/0
+  depends_on:
+    redis:
+      condition: service_healthy
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Public REST + WebSocket hub. Not published to the host — Caddy fronts it.
+  gateway:
+    <<: *relay
+    command: uvicorn relay.gateway.app:app --host 0.0.0.0 --port 8000
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # LiveKit agent worker — dials OUT to LiveKit Cloud, no inbound port.
+  agent:
+    <<: *relay
+    command: python -m relay.agent.worker start
+    depends_on:
+      redis:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+
+  # arq ingestion worker — consumes the Redis queue.
+  ingest:
+    <<: *relay
+    command: arq relay.ingestion.worker.WorkerSettings
+
+  # Caddy: automatic TLS for $RELAY_DOMAIN, reverse-proxies REST + WS to gateway.
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      gateway:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - RELAY_DOMAIN=${RELAY_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  # One-off schema migration against Supabase. Run explicitly:
+  #   docker compose -f docker-compose.prod.yml run --rm migrate
+  migrate:
+    <<: *relay
+    command: alembic -c alembic.ini upgrade head
+    restart: "no"
+    depends_on: []
+    profiles: ["tools"]
+
+volumes:
+  redis_data:
+  caddy_data:
+  caddy_config:

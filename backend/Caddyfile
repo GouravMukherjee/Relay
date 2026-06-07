@@ -1,0 +1,17 @@
+# Caddy reverse proxy for the Relay gateway.
+#
+# RELAY_DOMAIN is injected by docker-compose.prod.yml. For a real domain or an
+# <elastic-ip>.nip.io hostname, Caddy obtains a Let's Encrypt cert automatically
+# (ports 80 + 443 must be reachable). For "localhost" it serves local HTTP/HTTPS.
+#
+# WebSockets (/ws/sessions/{id}) are proxied transparently — no extra config.
+
+{$RELAY_DOMAIN} {
+	encode zstd gzip
+
+	reverse_proxy gateway:8000 {
+		# Preserve client info for the gateway's per-IP rate limiter + logs.
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}

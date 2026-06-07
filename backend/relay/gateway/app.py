@@ -38,8 +38,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from relay.config import settings
 from relay.logging import get_logger, set_request_id
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 

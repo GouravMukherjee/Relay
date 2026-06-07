@@ -123,6 +123,20 @@ class Settings(BaseSettings):
         default="https://llm-gateway.truefoundry.com/api/inference/openai",
         description="TrueFoundry AI Gateway base URL (OpenAI-compatible).",
     )
+    tfy_model: str = Field(
+        default="anthropic/claude-sonnet-4-5",
+        description=(
+            "Provider-prefixed chat model id on the TFY gateway "
+            "(e.g. 'anthropic/claude-sonnet-4-5'). Routed via /chat/completions."
+        ),
+    )
+    tfy_embedding_model: str = Field(
+        default="openai-main/text-embedding-3-small",
+        description=(
+            "Provider-prefixed embedding model id on the TFY gateway. Must be a model "
+            "your TFY account can access; produces vectors reduced to embedding_dim."
+        ),
+    )
 
     # ------------------------------------------------------------------
     # LLM provider keys (routed through TFY gateway)

@@ -23,9 +23,6 @@ logger = logging.getLogger(__name__)
 # Expected output dimension.  Must match ``settings.embedding_dim`` (1024).
 _EXPECTED_DIM = 1024
 
-# TODO: confirm <TrueFoundry> API — embedding model identifier on the gateway.
-_DEFAULT_EMBEDDING_MODEL = "text-embedding-3-large"
-
 
 class TfyEmbeddings(Embeddings):
     """Embeddings via the TrueFoundry AI Gateway (OpenAI-compatible endpoint).
@@ -48,6 +45,9 @@ class TfyEmbeddings(Embeddings):
             raise RuntimeError(
                 "TfyEmbeddings requires TFY_GATEWAY_URL to be set in the environment."
             )
+
+        # Provider-prefixed embedding model id on the TFY gateway (configurable).
+        self._model = settings.tfy_embedding_model
 
         # Normalise base URL — strip trailing slash for httpx.
         base_url = settings.tfy_gateway_url.rstrip("/")
@@ -76,8 +76,7 @@ class TfyEmbeddings(Embeddings):
 
         payload: dict[str, Any] = {
             "input": texts,
-            # TODO: confirm <TrueFoundry> API — correct model identifier for 1024-d.
-            "model": _DEFAULT_EMBEDDING_MODEL,
+            "model": self._model,
             # Request 1024-d output where the API supports dimensionality reduction.
             "dimensions": _EXPECTED_DIM,
         }

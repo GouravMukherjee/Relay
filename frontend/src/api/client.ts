@@ -79,6 +79,19 @@ export const api = {
 
   deleteDocument: (id: string) => req<void>(`/documents/${id}`, { method: "DELETE" }),
 
+  // ── Whisper-back TTS (MiniMax) ───────────────────────────────────────────────
+  // Returns a playable object URL for the synthesized MP3, or throws ApiError.
+  ttsUrl: async (text: string, voiceId?: string): Promise<string> => {
+    const res = await fetch(`${API_BASE}/tts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ text, voice_id: voiceId }),
+    });
+    if (!res.ok) throw await res.json().catch(() => ({ code: "internal_error", message: "TTS failed" }));
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
+
   // ── Sessions ───────────────────────────────────────────────────────────────
   createSession: (mode: Mode, opts?: { livekit_room?: string; customer_id?: string }) =>
     req<{ session_id: string; ws_url: string; livekit_token?: string }>("/sessions", {

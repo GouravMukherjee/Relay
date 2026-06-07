@@ -504,9 +504,24 @@ async def entrypoint(ctx: JobContext) -> None:  # noqa: C901
         )
 
     # ------------------------------------------------------------------
-    # Start the session — blocks until the room closes
+    # Start the session — blocks until the room closes.
+    # Enable LiveKit Cloud enhanced noise + background-voice cancellation when the
+    # plugin is available (improves STT/turn-detection quality on noisy mics). Guarded
+    # so the worker runs without the optional dependency.
     # ------------------------------------------------------------------
-    await session.start(agent=agent, room=ctx.room)
+    start_kwargs: dict[str, Any] = {"agent": agent, "room": ctx.room}
+    try:
+        from livekit.agents import RoomInputOptions  # type: ignore
+        from livekit.plugins import noise_cancellation  # type: ignore
+
+        start_kwargs["room_input_options"] = RoomInputOptions(
+            noise_cancellation=noise_cancellation.BVC()
+        )
+        logger.info("agent: BVC noise cancellation enabled")
+    except Exception as exc:  # noqa: BLE001 — optional; LiveKit Cloud only
+        logger.info("agent: noise cancellation unavailable (%s)", exc)
+
+    await session.start(**start_kwargs)
 
     logger.info(
         "agent: session ended session=%s room=%s",

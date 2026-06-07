@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,6 +36,13 @@ logger = logging.getLogger("relay.gateway.routes.account")
 router = APIRouter(tags=["account"])
 
 
+class TtsRequest(BaseModel):
+    """Body for the whisper-back text-to-speech endpoint."""
+
+    text: str = Field(..., min_length=1, max_length=5000)
+    voice_id: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -48,6 +57,34 @@ async def get_me(
     user: User = Depends(current_user),
 ) -> UserSchema:
     return user_to_schema(user)
+
+
+@router.post(
+    "/tts",
+    summary="Synthesize speech for a card answer (MiniMax whisper-back)",
+    responses={200: {"content": {"audio/mpeg": {}}}},
+)
+async def tts(
+    body: TtsRequest,
+    claims: Claims = Depends(current_claims),
+) -> Response:
+    """Return MP3 audio for *text* via MiniMax T2A. 503 if TTS is not configured."""
+    try:
+        from relay.adapters.minimax_tts import MinimaxTTS
+
+        mp3 = await MinimaxTTS().synthesize(body.text, voice_id=body.voice_id)
+    except RuntimeError as exc:  # missing creds
+        raise HTTPException(
+            status_code=503,
+            detail={"error": {"code": "internal_error", "message": f"TTS unavailable: {exc}"}},
+        ) from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("tts failed: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail={"error": {"code": "internal_error", "message": "TTS failed"}},
+        ) from exc
+    return Response(content=mp3, media_type="audio/mpeg")
 
 
 @router.get(

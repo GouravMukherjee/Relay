@@ -86,8 +86,10 @@ class MossRetrieval(RetrievalService):
         from moss import QueryOptions
 
         await self._ensure_loaded()
+        # alpha blends semantic (1.0) and keyword (0.0) matching — hybrid search.
         opts = QueryOptions(
             top_k=k,
+            alpha=settings.moss_hybrid_alpha,
             filter={"field": "organization_id", "condition": {"$eq": org_id}},
         )
         result = await self._client.query(self._index, text, opts)

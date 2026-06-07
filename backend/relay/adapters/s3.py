@@ -110,6 +110,23 @@ class S3Storage:
         )
         return url
 
+    async def put_object(self, key: str, data: bytes, content_type: str = "application/octet-stream") -> None:
+        """Upload *data* to *key* (server-side direct upload).
+
+        Used by the document upload route when the file is small enough to
+        buffer in memory. For large client-side uploads use presigned_put_url.
+        """
+        def _put() -> None:
+            self._client.put_object(
+                Bucket=self._bucket,
+                Key=key,
+                Body=data,
+                ContentType=content_type,
+            )
+
+        await asyncio.to_thread(_put)
+        logger.info("s3_put_object_ok", extra={"key": key, "size_bytes": len(data)})
+
     async def get_object(self, key: str) -> bytes:
         """Download and return the raw bytes for *key*.
 

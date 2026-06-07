@@ -126,10 +126,12 @@ async def upload_document(
         from relay.adapters.s3 import S3Storage
 
         storage = S3Storage()
-        s3_key = f"orgs/{org_id}/documents/{doc_id}/{filename or 'upload'}"
-        await storage.put_object(s3_key, raw, content_type=ct or "application/octet-stream")
+        candidate_key = f"orgs/{org_id}/documents/{doc_id}/{filename or 'upload'}"
+        await storage.put_object(candidate_key, raw, content_type=ct or "application/octet-stream")
+        s3_key = candidate_key  # only set after a confirmed successful upload
     except Exception as exc:  # noqa: BLE001
-        # S3 not configured in dev — fall through; ingestion worker will need it
+        # S3 not configured or upload failed — s3_key stays None so the
+        # ingestion worker won't try to fetch a non-existent object.
         logger.warning("S3 upload skipped: %s", exc)
 
     # ---- DB row ----

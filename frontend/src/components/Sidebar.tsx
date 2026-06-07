@@ -77,7 +77,6 @@ export function Sidebar({ mode, nav, onNav, onNewAnalysis, status, collapsed }: 
           <span className="conn-label">
             {status === "active" ? "Connected" : status === "connecting" ? "Connecting…" : "Offline"}
           </span>
-          <span className="conn-host mono">{BACKEND_HOST}</span>
         </span>
       </div>
     </motion.aside>

@@ -64,9 +64,9 @@ class PgVectorRetrieval(RetrievalService):
         prefer Moss for latency-critical paths.
         """
         # Lazy import to avoid circular deps at module level.
-        from relay.adapters.embeddings_tfy import TfyEmbeddings  # noqa: PLC0415
+        from relay.adapters.embeddings_factory import get_embeddings  # noqa: PLC0415
 
-        embeddings_svc = TfyEmbeddings()
+        embeddings_svc = get_embeddings()
         query_vec = (await embeddings_svc.embed([text]))[0]
 
         # pgvector cosine distance operator: <=> (lower = more similar).

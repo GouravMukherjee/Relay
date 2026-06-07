@@ -188,16 +188,29 @@ class TfyLLMClient(LLMClient):
             return None
 
         user_message = _build_user_message(query, chunks, mode, window)
-        return await self._synthesize_openai_compat(user_message)
+        # Try the primary model, then any configured fallbacks (automatic failover).
+        models = [self._model_id] + [
+            m.strip() for m in settings.tfy_fallback_models.split(",") if m.strip()
+        ]
+        last_exc: Exception | None = None
+        for model in models:
+            try:
+                return await self._synthesize_openai_compat(user_message, model)
+            except Exception as exc:  # noqa: BLE001 — try the next model on any failure
+                last_exc = exc
+                logger.warning("llm model failed; trying fallback", extra={"model": model, "error": str(exc)})
+        if last_exc is not None:
+            raise last_exc
+        return None
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _synthesize_openai_compat(self, user_message: str) -> CardDraft | None:
-        """Call the chat model via the TFY OpenAI-compatible /chat/completions endpoint."""
+    async def _synthesize_openai_compat(self, user_message: str, model: str) -> CardDraft | None:
+        """Call *model* via the TFY OpenAI-compatible /chat/completions endpoint."""
         payload: dict[str, Any] = {
-            "model": self._model_id,
+            "model": model,
             "messages": [
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {"role": "user", "content": user_message},
@@ -206,7 +219,6 @@ class TfyLLMClient(LLMClient):
             "temperature": 0.0,
         }
 
-        # TODO: confirm <TrueFoundry> API — chat completions endpoint path.
         response = await self._http_client.post("/chat/completions", json=payload)
         response.raise_for_status()
         data = response.json()
@@ -216,10 +228,7 @@ class TfyLLMClient(LLMClient):
             .get("message", {})
             .get("content", "")
         )
-        logger.debug(
-            "tfy_llm_openai_compat_ok",
-            extra={"model": self._model_id},
-        )
+        logger.debug("tfy_llm_ok", extra={"model": model})
         return _parse_response(raw_text)
 
     async def aclose(self) -> None:

@@ -90,6 +90,10 @@ class Settings(BaseSettings):
         default="relay-memory",
         description="Moss index name holding per-customer memory (Desk mode).",
     )
+    moss_hybrid_alpha: float = Field(
+        default=0.5,
+        description="Moss hybrid search weight (0=keyword, 1=semantic). 0.5 = balanced.",
+    )
     moss_model_id: str = Field(
         default="",
         description="Moss embedding model id; empty = SDK default (moss-minilm).",
@@ -153,6 +157,13 @@ class Settings(BaseSettings):
             "your TFY account can access; produces vectors reduced to embedding_dim."
         ),
     )
+    tfy_fallback_models: str = Field(
+        default="",
+        description=(
+            "Comma-separated provider-prefixed model ids to try (in order) if the primary "
+            "tfy_model call fails — automatic LLM failover, e.g. 'qwen/qwen-plus'."
+        ),
+    )
 
     # ------------------------------------------------------------------
     # LLM provider keys (routed through TFY gateway)
@@ -162,7 +173,19 @@ class Settings(BaseSettings):
         description="Anthropic API key (used by the Claude path via TFY gateway).",
     )
     minimax_api_key: str = Field(default="", description="Minimax API key.")
-    qwen_api_key: str = Field(default="", description="Qwen API key.")
+    minimax_group_id: str = Field(default="", description="Minimax GroupId (required by the T2A API).")
+    minimax_base_url: str = Field(default="https://api.minimax.io", description="Minimax API base URL.")
+    minimax_tts_model: str = Field(default="speech-02-turbo", description="Minimax TTS model (low-latency).")
+    minimax_voice_id: str = Field(default="male-qn-qingse", description="Default Minimax voice id.")
+    qwen_api_key: str = Field(default="", description="Qwen / Alibaba DashScope API key.")
+    qwen_base_url: str = Field(
+        default="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        description="DashScope OpenAI-compatible base URL (intl).",
+    )
+    qwen_embedding_model: str = Field(
+        default="text-embedding-v3",
+        description="Qwen embedding model (1024-d).",
+    )
 
     # ------------------------------------------------------------------
     # AWS / S3 (raw file storage)

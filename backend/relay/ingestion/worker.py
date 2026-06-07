@@ -77,28 +77,16 @@ async def startup(ctx: dict[str, Any]) -> None:
 
     # Import adapters here (not at module level) so that importing this module
     # in tests never triggers adapter construction (no creds required).
+    from relay.adapters.embeddings_factory import get_embeddings  # noqa: PLC0415
     from relay.adapters.s3 import S3Storage  # noqa: PLC0415
     from relay.adapters.unsiloed import UnsiloedParser  # noqa: PLC0415
-    from relay.adapters.embeddings_tfy import TfyEmbeddings  # noqa: PLC0415
     from relay.retrieval.service import CompositeRetrievalService  # noqa: PLC0415
 
-    ctx["parser"] = UnsiloedParser(api_key=settings.unsiloed_api_key)
-    ctx["embeddings"] = TfyEmbeddings(
-        api_key=settings.tfy_api_key,
-        gateway_url=settings.tfy_gateway_url,
-    )
-    ctx["retrieval"] = CompositeRetrievalService(
-        moss_api_key=settings.moss_api_key,
-        moss_base_url=settings.moss_base_url,
-        # PgVectorRetrieval is constructed inside CompositeRetrievalService
-        # and shares the module-level engine from relay.db.base.
-    )
-    ctx["s3"] = S3Storage(
-        aws_access_key_id=settings.aws_access_key_id,
-        aws_secret_access_key=settings.aws_secret_access_key,
-        aws_region=settings.aws_region,
-        bucket=settings.s3_bucket,
-    )
+    # Adapters read their own creds from settings; construct with no args.
+    ctx["parser"] = UnsiloedParser()
+    ctx["embeddings"] = get_embeddings()  # Qwen (DashScope) if configured, else TFY
+    ctx["retrieval"] = CompositeRetrievalService.from_settings()
+    ctx["s3"] = S3Storage()
 
     logger.info("ingestion worker startup complete")
 

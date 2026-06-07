@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { Card } from "../types";
 import { Icon } from "./Icon";
 import { easeOut } from "../motion";
+import { api } from "../api/client";
+import { USE_MOCK } from "../config";
 
 // Latency counts up to its value on mount — turns a static number into a visible
 // "resolved in <500ms" moment, in keeping with the real-time product story.
@@ -24,19 +26,58 @@ function useCountUp(target: number) {
 interface Props {
   card: Card;
   featured?: boolean;
+  /** When true, auto-play the whisper-back audio once on mount (read-aloud mode). */
+  autoSpeak?: boolean;
 }
 
-export function RelayCard({ card, featured }: Props) {
+export function RelayCard({ card, featured, autoSpeak }: Props) {
   const [openSource, setOpenSource] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
   const ms = useCountUp(card.latency_ms);
   const primarySource = card.sources[0];
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const copy = () => {
     void navigator.clipboard?.writeText(card.answer);
     setCopied(true);
     setTimeout(() => setCopied(false), 1400);
   };
+
+  // Whisper-back: synthesize the answer via MiniMax and play it. No-op in demo mode.
+  const speak = async () => {
+    if (USE_MOCK) return;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+      setSpeaking(false);
+      return;
+    }
+    try {
+      setSpeaking(true);
+      const url = await api.ttsUrl(card.answer);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        audioRef.current = null;
+        setSpeaking(false);
+      };
+      await audio.play();
+    } catch {
+      setSpeaking(false);
+    }
+  };
+
+  // Auto-play once when read-aloud mode is on and this card appears.
+  useEffect(() => {
+    if (autoSpeak && !USE_MOCK) void speak();
+    return () => {
+      audioRef.current?.pause();
+      audioRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <motion.div
@@ -50,15 +91,28 @@ export function RelayCard({ card, featured }: Props) {
     >
       <div className="answer-top">
         <h3 className="answer-title">{card.title ?? card.trigger_text}</h3>
-        <motion.button
-          className="copy-btn"
-          onClick={copy}
-          title="Copy answer"
-          whileHover={{ scale: 1.15 }}
-          whileTap={{ scale: 0.85 }}
-        >
-          <Icon name={copied ? "check" : "content_copy"} size={20} />
-        </motion.button>
+        <div className="answer-actions">
+          {!USE_MOCK && (
+            <motion.button
+              className={`copy-btn${speaking ? " active" : ""}`}
+              onClick={() => void speak()}
+              title={speaking ? "Stop" : "Read aloud"}
+              whileHover={{ scale: 1.15 }}
+              whileTap={{ scale: 0.85 }}
+            >
+              <Icon name={speaking ? "stop_circle" : "volume_up"} size={20} />
+            </motion.button>
+          )}
+          <motion.button
+            className="copy-btn"
+            onClick={copy}
+            title="Copy answer"
+            whileHover={{ scale: 1.15 }}
+            whileTap={{ scale: 0.85 }}
+          >
+            <Icon name={copied ? "check" : "content_copy"} size={20} />
+          </motion.button>
+        </div>
       </div>
 
       <p className="answer-body">&ldquo;{card.answer}&rdquo;</p>

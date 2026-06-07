@@ -1647,3 +1647,63 @@ input {
 .login-link:hover {
   text-decoration: underline;
 }
+
+/* ============================================================================
+   Knowledge upload — drag & drop + async ingestion status
+   ============================================================================ */
+.section-page {
+  position: relative;
+}
+.section-page.drag-active {
+  outline: 2px dashed var(--primary-container);
+  outline-offset: -10px;
+  border-radius: var(--r-xl);
+}
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgba(79, 70, 229, 0.06);
+  backdrop-filter: blur(2px);
+  border-radius: var(--r-xl);
+  pointer-events: none;
+}
+.drop-overlay-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 40px;
+  background: var(--surface-container-lowest);
+  border: 1.5px dashed var(--primary-container);
+  border-radius: var(--r-xl);
+  color: var(--primary-container);
+  font-weight: 600;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+}
+.drop-overlay-inner small {
+  color: var(--on-surface-variant);
+  font-weight: 500;
+  font-size: 0.75rem;
+}
+/* "ingesting…" pulse on a processing document row. */
+.status-processing {
+  color: var(--on-surface-variant);
+  animation: relay-pulse 1.4s ease-in-out infinite;
+}
+@keyframes relay-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* Card header actions (copy + read-aloud whisper-back). */
+.answer-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.copy-btn.active {
+  color: var(--primary-container);
+}

@@ -2,7 +2,7 @@
 // Wraps the Supabase session and exposes getToken() for injecting Bearer tokens
 // into API calls and WebSocket URLs.
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabaseClient";
 
@@ -28,22 +28,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Mirror the session into a ref so `getToken` can be a STABLE closure that
+  // always reads the latest token. Without this, getToken closes over the
+  // `session` from the render it was created in; React runs child effects before
+  // parent effects, so a consumer's mount-time request (e.g. createSession) can
+  // fire before LoginGate re-wires the token provider — reading a stale closure
+  // that still sees `session === null` and sending no Authorization header (401).
+  const sessionRef = useRef<Session | null>(null);
+  const applySession = useCallback((s: Session | null) => {
+    sessionRef.current = s;
+    setSession(s);
+  }, []);
+
   useEffect(() => {
     // Hydrate from existing session (e.g. after page refresh).
     supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
+      applySession(data.session);
       setLoading(false);
     });
 
     // Keep in sync with sign-in / sign-out events.
     const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
+      applySession(s);
     });
 
     return () => listener.subscription.unsubscribe();
-  }, []);
+  }, [applySession]);
 
-  const getToken = (): string | null => session?.access_token ?? null;
+  // Stable across renders: reads the ref, never a stale captured `session`.
+  const getToken = useCallback((): string | null => sessionRef.current?.access_token ?? null, []);
 
   const signInWithEmail = async (
     email: string,

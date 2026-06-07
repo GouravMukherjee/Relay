@@ -80,11 +80,19 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     # Moss retrieval service
     # ------------------------------------------------------------------
-    moss_api_key: str = Field(default="", description="Moss API key.")
-    moss_base_url: str = Field(
-        default="https://api.moss.ai",
-        description="Base URL for the Moss retrieval API.",
+    moss_project_id: str = Field(default="", description="Moss project id (moss.dev).")
+    moss_project_key: str = Field(default="", description="Moss project key (moss.dev).")
+    moss_index_name: str = Field(
+        default="relay",
+        description="Moss index name holding the tenant knowledge chunks.",
     )
+    moss_model_id: str = Field(
+        default="",
+        description="Moss embedding model id; empty = SDK default (moss-minilm).",
+    )
+    # Deprecated (pre-SDK HTTP adapter); kept so old env/secrets don't error.
+    moss_api_key: str = Field(default="", description="Deprecated — unused (SDK uses project id/key).")
+    moss_base_url: str = Field(default="", description="Deprecated — unused (SDK uses project id/key).")
 
     # ------------------------------------------------------------------
     # LiveKit (audio transport + room management)

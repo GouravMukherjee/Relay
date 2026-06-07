@@ -313,10 +313,21 @@ def _build_orchestrator(db):
         from relay.orchestrator.synth import Orchestrator
         from relay.retrieval.service import CompositeRetrievalService
 
+        # Desk-mode per-customer memory (Moss-backed, built-in embeddings). Best-effort:
+        # if it can't be built, proceed without memory (it's optional context, never grounding).
+        memory = None
+        try:
+            from relay.memory.moss_memory import MossMemoryService
+
+            memory = MossMemoryService()
+        except Exception as exc:  # noqa: BLE001
+            logger.info("memory service unavailable; Desk runs without it", extra={"error": str(exc)})
+
         return Orchestrator(
             retrieval=CompositeRetrievalService.from_settings(),
             llm=TfyLLMClient(),
             session=db,
+            memory=memory,
         )
     except Exception as exc:  # noqa: BLE001 — missing creds / adapters under construction
         raise _OrchestratorUnavailable(str(exc)) from exc

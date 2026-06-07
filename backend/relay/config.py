@@ -86,6 +86,10 @@ class Settings(BaseSettings):
         default="relay",
         description="Moss index name holding the tenant knowledge chunks.",
     )
+    moss_memory_index_name: str = Field(
+        default="relay-memory",
+        description="Moss index name holding per-customer memory (Desk mode).",
+    )
     moss_model_id: str = Field(
         default="",
         description="Moss embedding model id; empty = SDK default (moss-minilm).",

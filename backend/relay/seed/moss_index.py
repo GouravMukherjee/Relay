@@ -17,9 +17,28 @@ import logging
 
 from relay.config import settings
 from relay.interfaces.retrieval import RetrievedChunk
-from relay.seed.northwind import SEED_DOCUMENTS
+from relay.seed.northwind import DEMO_CUSTOMER_ID, SEED_DOCUMENTS
 
 logger = logging.getLogger("relay.seed.moss_index")
+
+# Demo customer + memories (Desk mode). Mirrors northwind._seed_customer_memories.
+DEMO_CUSTOMER = {"name": "Sarah Chen", "company": "Acme Corp", "email": "sarah.chen@acme.corp"}
+DEMO_MEMORIES = [
+    {
+        "kind": "fact",
+        "text": (
+            "Customer Sarah Chen (Acme Corp, Growth tier) had a CRM export sync issue "
+            "resolved on Mar 12 2026 via OAuth re-authentication. Ticket #1023."
+        ),
+    },
+    {
+        "kind": "fact",
+        "text": (
+            "Acme Corp is on the Growth Plan. Sarah Chen is the primary contact. "
+            "Previous ticket: Onboarding setup (resolved Feb 2 2026)."
+        ),
+    },
+]
 
 
 def _build_chunks() -> list[RetrievedChunk]:
@@ -92,15 +111,63 @@ async def _write_postgres_rows(org_id: str) -> None:
         await db.commit()
 
 
-async def seed_moss(org_id: str) -> int:
-    """Index all demo chunks into Moss + write the SoR rows. Returns the chunk count."""
+async def _seed_memories(org_id: str) -> int:
+    """Create the demo customer (+SoR memory rows) and index memories into Moss.
+
+    Returns the number of memories indexed. Desk-mode recall reads these from the Moss
+    memory index; the Postgres rows are the system of record (embedding NULL).
+    """
+    from sqlalchemy import delete as sa_delete
+    from relay.db.base import privileged_session
+    from relay.db.models import Customer, Memory
+    from relay.memory.moss_memory import MossMemoryService
+
+    # 1) Customer + Memory rows in Postgres (SoR).
+    async with privileged_session() as db:
+        cust = await db.get(Customer, DEMO_CUSTOMER_ID)
+        if cust is None:
+            db.add(
+                Customer(
+                    id=DEMO_CUSTOMER_ID,
+                    organization_id=org_id,
+                    name=DEMO_CUSTOMER["name"],
+                    company=DEMO_CUSTOMER["company"],
+                    email=DEMO_CUSTOMER["email"],
+                )
+            )
+        await db.execute(sa_delete(Memory).where(Memory.customer_id == DEMO_CUSTOMER_ID))
+        for m in DEMO_MEMORIES:
+            db.add(
+                Memory(
+                    customer_id=DEMO_CUSTOMER_ID,
+                    organization_id=org_id,
+                    kind=m["kind"],
+                    text=m["text"],
+                    embedding=None,  # Moss embeds server-side
+                )
+            )
+        await db.commit()
+
+    # 2) Index memories into the Moss memory index for recall.
+    mem = MossMemoryService()
+    for m in DEMO_MEMORIES:
+        await mem.store(DEMO_CUSTOMER_ID, m["kind"], m["text"], org_id)
+    return len(DEMO_MEMORIES)
+
+
+async def seed_moss(org_id: str) -> tuple[int, int]:
+    """Index demo chunks + memories into Moss + write SoR rows.
+
+    Returns ``(chunk_count, memory_count)``.
+    """
     from relay.adapters.moss import MossRetrieval
 
     chunks = _build_chunks()
     await _write_postgres_rows(org_id)
     moss = MossRetrieval()
     await moss.index_with_org(chunks, org_id=org_id)
-    return len(chunks)
+    n_mem = await _seed_memories(org_id)
+    return len(chunks), n_mem
 
 
 def main() -> None:
@@ -110,10 +177,11 @@ def main() -> None:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO)
-    n = asyncio.run(seed_moss(args.org_id))
+    n_chunks, n_mem = asyncio.run(seed_moss(args.org_id))
     print(
-        f"Seeded {n} chunks from {len(SEED_DOCUMENTS)} documents into Moss index "
-        f"'{settings.moss_index_name}' for org {args.org_id}."
+        f"Seeded {n_chunks} chunks from {len(SEED_DOCUMENTS)} documents into Moss index "
+        f"'{settings.moss_index_name}', and {n_mem} memories into "
+        f"'{settings.moss_memory_index_name}', for org {args.org_id}."
     )
 
 
